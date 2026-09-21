@@ -3,6 +3,8 @@ import { MarketingNav } from "@/components/marketing-nav";
 import { Icon } from "@/components/icons";
 
 const services = [
+  ["Todos os serviços", "Verificação de referências, comparação de jurisprudência, estudo, aulas, minutas e cronologias. IA paga desactivada nesta fase.", "/services", "Explorar serviços"],
+  ["Dossiers e temas", "Guarde notas e relatórios. Consulte alterações legislativas manualmente; sem monitorização automática.", "/library", "Abrir dossiers"],
   ["Pesquisa jurídica", "Pesquise legislação e jurisprudência disponíveis na web, com fontes para consultar e limites de vigência explicitados.", "/chat", "Abrir chat jurídico"],
   ["Estudo e ensino", "Explore conceitos, organize perguntas e peça explicações adaptadas a estudantes e professores.", "/chat", "Começar uma pesquisa"],
   ["Análise de contratos", "Compare contratos com as políticas da empresa, investigue questões jurídicas e reveja propostas de redacção.", "/contracts", "Abrir contratos"],

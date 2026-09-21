@@ -1,0 +1,4 @@
+import Link from 'next/link';
+import { AppShell } from '@/components/app-shell';
+import { workflows } from '@/lib/services';
+export default function Services() { return <AppShell><h1>Serviços jurídicos</h1><p>Ferramentas de apoio à pesquisa, estudo e trabalho. Resultados sujeitos a revisão humana. Chamadas pagas à IA bloqueadas nesta fase de teste.</p><div className="service-grid">{Object.entries(workflows).map(([id,w])=><article className="card team-panel" key={id}><h2>{w.title}</h2><p>{w.description}</p><Link className="btn btn-primary" href={id==='watch'?'/alerts':`/services/${id}`}>Abrir</Link></article>)}<article className="card team-panel"><h2>Dossiers de pesquisa</h2><p>Guarde notas, relatórios e fontes e exporte o seu trabalho.</p><Link className="btn btn-primary" href="/library">Abrir dossiers</Link></article></div></AppShell>; }

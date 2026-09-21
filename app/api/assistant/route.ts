@@ -70,7 +70,7 @@ async function handle(request: Request) {
       if (downloaded.error || !downloaded.data || downloaded.data.size !== documents[i].byte_size) throw new Error("DOCUMENT");
       const bytes = Buffer.from(await downloaded.data.arrayBuffer());
       if (bytes.subarray(0, 5).toString() !== "%PDF-") throw new Error("DOCUMENT");
-      files.push({ type: "input_file", filename: `Document-${i === 0 ? "A" : "B"}.pdf`, file_data: `data:application/pdf;base64,${bytes.toString("base64")}` });
+      files.push({ type: "input_file", filename: `Document-${String.fromCharCode(65 + i)}.pdf`, file_data: `data:application/pdf;base64,${bytes.toString("base64")}` });
     }
     const research = input.mode === "research";
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, baseURL: "https://api.openai.com/v1", timeout: 75000, maxRetries: 0 });

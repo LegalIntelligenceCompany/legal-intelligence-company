@@ -7,7 +7,8 @@ function load(path, deps, env = {}) {
   const source = ts.transpileModule(readFileSync(new URL(path, import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
   const module = { exports: {} }; new Function("require", "module", "exports", "process", "console", source)(name => { if (!(name in deps)) throw new Error(name); return deps[name]; }, module, module.exports, { env: { AI_EXECUTION_ENABLED: "true", OPENAI_API_KEY: "test-only", OPENAI_MODEL: "gpt-5-mini", ...env } }, { warn() {} }); return module.exports;
 }
-const assistant = load("../lib/assistant.ts", { "./legal-research": research });
+const services = load("../lib/services.ts", {});
+const assistant = load("../lib/assistant.ts", { "./legal-research": research, "./services": services });
 const id = "10000000-0000-4000-8000-000000000001", org = "20000000-0000-4000-8000-000000000001", doc = "30000000-0000-4000-8000-000000000001";
 const base = { requestId: id, mode: "research", profile: "Estudante", country: "Portugal", question: "Explique um conceito", history: [], documentIds: [], consent: true };
 const output = { status: "completed", output: [{ type: "web_search_call", status: "completed" }, { type: "message", content: [{ type: "output_text", text: "Informação de teste [fonte].", annotations: [{ type: "url_citation", start_index: 20, end_index: 27, url: "https://diariodarepublica.pt/teste", title: "Teste" }] }] }] };

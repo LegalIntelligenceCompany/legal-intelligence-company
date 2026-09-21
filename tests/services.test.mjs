@@ -1,0 +1,14 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import ts from 'typescript';
+import * as research from '../lib/legal-research.ts';
+function load(path,deps={}){const source=ts.transpileModule(readFileSync(new URL(path,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2023}}).outputText;const m={exports:{}};new Function('require','module','exports',source)(n=>{if(!(n in deps))throw Error(n);return deps[n];},m,m.exports);return m.exports;}
+const services=load('../lib/services.ts');
+const assistant=load('../lib/assistant.ts',{'./services':services,'./legal-research':research});
+const library=load('../lib/library.ts',{'./legal-research':research});
+const id='11111111-1111-4111-8111-111111111111';
+const base={requestId:id,mode:'research',profile:'Geral',country:'Portugal',question:'Teste',history:[],documentIds:[],consent:true};
+test('all specialised public workflows have validated formats and specific instructions',()=>{for(const [workflow,w] of Object.entries(services.workflows)){if(workflow==='timeline')continue;for(const format of w.formats){const input=assistant.validateAssistantInput({...base,workflow,format});assert.ok(assistant.assistantInstructions(input).includes(w.title));}assert.throws(()=>assistant.validateAssistantInput({...base,workflow,format:'inventado'}));}assert.equal(services.isWorkflow('__proto__'),false);});
+test('timeline accepts one to five scoped unique PDFs, never public research',()=>{const input={...base,mode:'timeline',workflow:'timeline',format:'Cronologia com evidência',organizationId:id,documentIds:[id]};assert.equal(assistant.validateAssistantInput(input).mode,'timeline');assert.throws(()=>assistant.validateAssistantInput({...input,documentIds:[]}));assert.throws(()=>assistant.validateAssistantInput({...input,documentIds:[id,id]}));assert.throws(()=>assistant.validateAssistantInput({...input,organizationId:undefined}));assert.throws(()=>assistant.validateAssistantInput({...input,mode:'research'}));assert.match(assistant.assistantInstructions(input),/exclusivamente nos ficheiros/);});
+test('library validates content and rejects unsafe links; differences are textual',()=>{assert.throws(()=>library.librarySources([{title:'x',url:'javascript:alert(1)'}]));assert.throws(()=>library.librarySources([{title:'x',url:'http://localhost/x'}]));assert.throws(()=>library.libraryText(' ',160));assert.throws(()=>library.libraryText('x'.repeat(161),160));assert.deepEqual(library.compareReports('A\nB','B\nC'),{removed:['A'],added:['C']});assert.equal(library.librarySources([{title:'DR',url:'https://diariodarepublica.pt/'}]).length,1);});

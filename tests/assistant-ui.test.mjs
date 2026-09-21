@@ -13,6 +13,8 @@ function render(states = {}, organizationId) {
     "react/jsx-runtime": jsx,
     "next/link": ({ href, children, ...props }) => React.createElement("a", { href, ...props }, children),
     "@/lib/supabase/client": { createClient: () => null },
+    "@/lib/services": { workflows: {} },
+    "./save-research": { SaveResearch: () => null },
     "@/lib/assistant": { profiles: ["Geral", "Estudante", "Professor", "Advogado", "Empresa"] },
   };
   const exports = {}; new Function("require", "exports", source)(name => { if (!(name in deps)) throw new Error(name); return deps[name]; }, exports);
