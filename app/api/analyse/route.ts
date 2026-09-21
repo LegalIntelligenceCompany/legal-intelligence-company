@@ -81,6 +81,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (process.env.AI_EXECUTION_ENABLED !== "true") return NextResponse.json({ code: "AI_PAUSED", error: "As chamadas pagas de IA ainda não foram activadas pelo administrador. Não foi feita nenhuma chamada à IA." }, { status: 503, headers });
   if (request.headers.get("origin") !== new URL(request.url).origin) return failure("FORBIDDEN", 403);
   if (!request.headers.get("content-type")?.startsWith("application/json")) return failure("INVALID_REQUEST");
   let body: Record<string, unknown>;

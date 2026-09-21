@@ -4,7 +4,22 @@ MVP Next.js + TypeScript, Supabase Auth/DB/Storage e OpenAI no backend. Interfac
 
 ## Estado real e limites
 
+### Motor avançado — activação explícita
+
+- Chat e ferramentas documentais usam `LEGAL_AI_MODEL` (por defeito `gpt-6-astra`), raciocínio elevado, uma passagem de elaboração e uma segunda de revisão. Não há fallback automático para um modelo mais barato. O acesso ao modelo na conta API ainda precisa de ser confirmado por um teste real autorizado.
+- Na pesquisa, ambas as passagens consultam a web e a resposta final tem de conter as suas próprias citações. Nos documentos privados, ambas recebem os PDFs autorizados e nenhuma tem ferramentas web. A revisão é feita por IA, não é uma auditoria independente nem certificação de verdade. Fontes oficiais são exigidas pelas instruções, não existe cobertura exaustiva de legislação/jurisprudência.
+- Cada passagem tem até 75 segundos e 12 000 tokens de saída; a pesquisa permite até 6 chamadas na primeira e 4 na revisão. Falhas/tempos limite podem ter custos depois de activar. Sem retries; se a revisão falhar não se apresenta o rascunho. A reserva de quota continua 3 minutos. Não existe fila durável para trabalhos longos.
+- `AI_EXECUTION_ENABLED` tem de ser exactamente `true` para permitir pedidos pagos. Ausente/`false` bloqueia o chat, ferramentas e novas análises contratuais antes de chamar a OpenAI. Publicar/abrir páginas não chama a IA. Isto não elimina custos de alojamento, base de dados ou outros serviços.
+- Preparar sem custos de inferência: publicar os ficheiros deixando `AI_EXECUTION_ENABLED=false` (ou ausente). Não alterar a chave. Não há tarefas automáticas de pesquisa.
+- Quando decidir activar: na Vercel → Environment Variables, definir `LEGAL_AI_MODEL=gpt-6-astra` e `AI_EXECUTION_ENABLED=true`, e fazer Redeploy. Só activar após configurar orçamento, acesso dos clientes e consentimento. Qualquer utilizador autorizado, não apenas o proprietário, pode gerar custos. Pagamentos dos clientes ainda não estão implementados. O interruptor não cancela chamadas já em curso.
+- A análise contratual contra políticas mantém o seu motor anterior (`OPENAI_MODEL`/`OPENAI_RESEARCH_MODEL`); o interruptor de execução abrange-a também. Não é correcto anunciar que todos os módulos foram migrados ou que a plataforma é a melhor IA jurídica.
+- Os testes desta implementação são simulados: não houve chamadas pagas, medição de qualidade jurídica ou confirmação de latência em produção. Antes do lançamento, executar a avaliação abaixo com autorização de custos e revisão por jurista.
+
 ### Chat jurídico e novos serviços (actualização 005)
+
+Qualidade das respostas: o servidor selecciona a mensagem final (ou a última mensagem sem `phase` para modelos antigos), exclui comentários intermédios e recusa promessas de pesquisa reconhecidas pelo filtro. As citações têm de pertencer à resposta final. Este filtro é heurístico: não verifica semanticamente todos os factos e não garante ausência de alucinações. As instruções exigem fundamentos, excepções, exemplos identificados, fontes consultadas e incerteza explícita. Os limites do motor avançado estão descritos acima; perguntas amplas podem atingir o timeout.
+
+Antes de aprovar a qualidade em produção, executar com consentimento para custos: (1) diferença entre jurisprudência e legislação, (2) regime com alterações recentes, (3) processo deliberadamente inexistente, (4) questão ambígua quanto à jurisdição e (5) fontes contraditórias. Um revisor deve abrir cada fonte central, conferir se sustenta a afirmação, verificar datas/artigos e confirmar que o assistente não inventou uma resposta onde faltavam elementos. Testes simulados não substituem esta avaliação real. Não promover a plataforma como infalível ou como base exaustiva.
 
 - A página principal tem um botão **Abrir chat jurídico** para `/chat`. A pesquisa exige login, mas não empresa. Perfis Geral, Estudante, Professor, Advogado e Empresa adaptam as explicações. O âmbito inicial é Portugal/União Europeia.
 - O chat utiliza pesquisa web real e apresenta ligações das anotações de citações devolvidas pelo fornecedor. Sem pesquisa concluída e citações válidas, a resposta é recusada. Não certifica vigência, aplicabilidade ou cobertura integral; é preciso conferir fontes. URLs escritos apenas no texto do modelo não se tornam links clicáveis.
@@ -14,12 +29,12 @@ MVP Next.js + TypeScript, Supabase Auth/DB/Storage e OpenAI no backend. Interfac
 - Prazos: extracção em texto + formulário de data/título confirmado pelo utilizador. Exporta `.ics` com alarme um dia antes. É necessário importar o ficheiro e permitir notificações no calendário. **Não existe monitorização de prazos nem envio automático de e-mails pela plataforma.**
 - Conversas só em memória no navegador, não guardadas na base/localStorage. Recarregar, mudar contexto ou terminar sessão limpa-as. Cada novo pedido reenvia no máximo os dois últimos pares de mensagens (respostas limitadas a 10 000 caracteres de contexto). O fornecedor recebe pergunta/contexto; no modo de pesquisa, estes podem seguir para fornecedores de pesquisa. Não inserir dados sensíveis. Nos modos privados, os PDFs seleccionados são reenviados à OpenAI em cada pergunta.
 - Limites atómicos em SQL: um pedido simultâneo por utilizador (reserva de 3 minutos), 20 tentativas por conta e 200 globais em 24 horas para o assistente. A análise contratual existente tem limites separados. Não são limites monetários. Sem retries automáticos; falhas podem ter custos. Os IDs de pedido impedem repetir a mesma chamada enquanto o registo existir.
-- A tabela `assistant_requests` guarda apenas ID, utilizador, datas e estado; o cliente não pode lê-la/escrevê-la. Defina a política de retenção deste registo antes do lançamento. A rota pode durar 180 segundos, com chamada de IA até 120 segundos; não é uma fila durável.
+- A tabela `assistant_requests` guarda apenas ID, utilizador, datas e estado; o cliente não pode lê-la/escrevê-la. Defina a política de retenção deste registo antes do lançamento. A rota pode durar 180 segundos, com duas chamadas de IA de até 75 segundos cada; não é uma fila durável.
 
 #### Activar esta versão
 
 1. Execute no SQL Editor do Supabase o conteúdo de `supabase/migrations/005_assistant.sql` (repetível). A página `/setup/assistant` permite copiar o código. Para ferramentas privadas, mantenha as migrações 001–004 já instaladas.
-2. Mantenha as mesmas variáveis de servidor OpenAI/Supabase indicadas abaixo. Não é necessária outra chave. `OPENAI_RESEARCH_MODEL` usa o modelo de pesquisa; vazio recorre a `OPENAI_MODEL`.
+2. Mantenha as chaves de servidor OpenAI/Supabase. Para chat/ferramentas configure `LEGAL_AI_MODEL`; para análise contratual mantêm-se `OPENAI_MODEL` e `OPENAI_RESEARCH_MODEL`. A activação paga depende de `AI_EXECUTION_ENABLED=true`, conforme explicado acima.
 3. Teste localmente e publique estes ficheiros através do repositório ligado à Vercel. A alteração local não actualiza sozinha o site publicado.
 4. Confirme o URL de produção e `/auth/callback` no Supabase. Abra `/chat`, entre com um e-mail pessoal ou académico e confirme que não exige criar empresa.
 5. Com consentimento para os custos, teste uma pergunta genérica com fontes e dois PDFs fictícios. Teste também uma segunda conta sem acesso à empresa. Não foram efectuadas chamadas pagas nos testes automatizados.

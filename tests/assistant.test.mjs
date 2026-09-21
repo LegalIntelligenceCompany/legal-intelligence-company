@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import ts from "typescript";
 import * as research from "../lib/legal-research.ts";
-function load(path, deps) {
+function load(path, deps, env = {}) {
   const source = ts.transpileModule(readFileSync(new URL(path, import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
-  const module = { exports: {} }; new Function("require", "module", "exports", "process", "console", source)(name => { if (!(name in deps)) throw new Error(name); return deps[name]; }, module, module.exports, { env: { OPENAI_API_KEY: "test-only", OPENAI_MODEL: "gpt-5-mini" } }, { warn() {} }); return module.exports;
+  const module = { exports: {} }; new Function("require", "module", "exports", "process", "console", source)(name => { if (!(name in deps)) throw new Error(name); return deps[name]; }, module, module.exports, { env: { AI_EXECUTION_ENABLED: "true", OPENAI_API_KEY: "test-only", OPENAI_MODEL: "gpt-5-mini", ...env } }, { warn() {} }); return module.exports;
 }
 const assistant = load("../lib/assistant.ts", { "./legal-research": research });
 const id = "10000000-0000-4000-8000-000000000001", org = "20000000-0000-4000-8000-000000000001", doc = "30000000-0000-4000-8000-000000000001";
@@ -26,6 +26,33 @@ test("only actual web searches with bounded safe citation annotations are accept
   assert.throws(() => assistant.parseAssistantResponse({ ...output, status: "incomplete" }, false), /INCOMPLETE/);
   assert.throws(() => assistant.parseAssistantResponse({ ...output, output: output.output.slice(1) }, true), /NO_SOURCES/);
 });
+test("final answer excludes commentary and preserves citation offsets", () => {
+  const raw = structuredClone(output);
+  raw.output[1].phase = "final_answer";
+  raw.output.unshift({ type: "message", phase: "commentary", content: [{ type: "output_text", text: "Vou pesquisar fontes oficiais." }] });
+  const result = assistant.parseAssistantResponse(raw, true);
+  assert.equal(result.text, "Informação de teste [fonte].\n");
+  assert.equal(result.citations[0].start, 20);
+});
+test("promise-only and commentary-only responses are rejected despite citations", () => {
+  for (const text of ["Vou pesquisar fontes oficiais e depois explico. Obrigado — já volto com as referências.", "I will search official sources and get back to you."]) {
+    const raw = structuredClone(output); raw.output[1].content[0].text = text;
+    assert.throws(() => assistant.parseAssistantResponse(raw, true), /INCOMPLETE/);
+  }
+  const raw = structuredClone(output); raw.output[1].phase = "commentary";
+  assert.throws(() => assistant.parseAssistantResponse(raw, true), /INCOMPLETE/);
+});
+test("preamble citations cannot qualify an uncited final answer", () => {
+  const raw = structuredClone(output); raw.output[1].phase = "commentary";
+  raw.output.push({ type: "message", phase: "final_answer", content: [{ type: "output_text", text: "Uma conclusão sem fontes." }] });
+  assert.throws(() => assistant.parseAssistantResponse(raw, true), /NO_SOURCES/);
+  raw.output[2].status = "incomplete";
+  assert.throws(() => assistant.parseAssistantResponse(raw, true), /INCOMPLETE/);
+});
+test("depth instructions require support and explicit uncertainty", () => {
+  const prompt = assistant.assistantInstructions(base);
+  for (const text of ["800–1400", "não preenchas lacunas", "Uma URL real não prova", "excepções", "vigência não confirmada"]) assert.ok(prompt.includes(text));
+});
 test("calendar validates real dates, prevents line injection and folds unicode", () => {
   assert.throws(() => assistant.calendarReminder("Prazo", "2026-02-30"));
   const ics = assistant.calendarReminder("á".repeat(100) + "\r\nATTENDEE:evil@example.com", "2026-10-01");
@@ -38,8 +65,8 @@ function setup(options = {}) {
     from() { const q = { select() { return q; }, eq(k, v) { calls.filters.push([k, v]); return q; }, maybeSingle: async () => ({ data: options.denied ? null : { storage_path: "scoped-file", byte_size: options.size ?? pdf.size, status: "uploaded", mime_type: "application/pdf" } }) }; return q; },
     storage: { from: () => ({ download: async path => { calls.downloads.push(path); return { data: pdf }; } }) } };
   const admin = { rpc: async (name, args) => { calls.rpc.push([name, args]); return { error: name === "assistant_begin" ? options.claimError : null }; } };
-  class OpenAI { async post(_path, params) { calls.provider.push(params.body); if (options.providerError) throw new Error("SECRET PROVIDER CONTENT"); return options.output ?? output; } }
-  const route = load("../app/api/assistant/route.ts", { "next/server": { NextResponse: { json: (data, init) => Response.json(data, init) } }, openai: OpenAI, "@/lib/assistant": assistant, "@/lib/supabase/server": { createClient: async () => client }, "@/lib/supabase/admin": { createAdminClient: () => admin } });
+  class OpenAI { async post(_path, params) { calls.provider.push(params.body); if (options.providerError || (options.reviewError && calls.provider.length === 2)) throw new Error("SECRET PROVIDER CONTENT"); return (calls.provider.length === 2 ? options.reviewOutput : options.output) ?? output; } }
+  const route = load("../app/api/assistant/route.ts", { "next/server": { NextResponse: { json: (data, init) => Response.json(data, init) } }, openai: OpenAI, "@/lib/assistant": assistant, "@/lib/supabase/server": { createClient: async () => client }, "@/lib/supabase/admin": { createAdminClient: () => admin } }, options.env);
   return { calls, post: (body = base, origin = "https://lic.test") => route.POST(new Request("https://lic.test/api/assistant", { method: "POST", headers: { origin, "Content-Type": "application/json" }, body: JSON.stringify(body) })) };
 }
 test("route rejects cross-origin, unauthenticated and malformed requests before paid calls", async () => {
@@ -51,7 +78,31 @@ test("durable quota and duplicate rejections prevent provider requests", async (
   for (const message of ["RATE_LIMITED", "BUSY", "DUPLICATE", "schema missing"]) { const s = setup({ claimError: { message } }); const response = await s.post(); assert.ok(response.status >= 400); assert.equal(s.calls.provider.length, 0); }
 });
 test("public research requires no company, uses required search and store false", async () => {
-  const s = setup(); const response = await s.post(); assert.equal(response.status, 200); assert.equal(s.calls.filters.length, 0); const req = s.calls.provider[0]; assert.equal(req.store, false); assert.equal(req.tool_choice, "required"); assert.equal(req.max_tool_calls, 4); assert.equal(req.tools[0].type, "web_search"); assert.equal(s.calls.rpc.at(-1)[1].p_success, true);
+  const s = setup(); const response = await s.post(); assert.equal(response.status, 200); assert.equal(s.calls.filters.length, 0); const req = s.calls.provider[0]; assert.equal(req.store, false); assert.equal(req.tool_choice, "required"); assert.equal(req.max_tool_calls, 6); assert.equal(req.max_output_tokens, 12000); assert.equal(req.reasoning.effort, "high"); assert.equal(req.model, "gpt-6-astra"); assert.equal(req.tools[0].type, "web_search"); assert.equal(s.calls.provider.length, 2); assert.equal(s.calls.rpc.at(-1)[1].p_success, true);
+});
+test("paid calls are disabled unless explicitly enabled", async () => {
+  for (const value of [undefined, "false", "1", "TRUE"]) {
+    const s = setup({ env: { AI_EXECUTION_ENABLED: value } }); const res = await s.post();
+    assert.equal(res.status, 503); assert.equal((await res.json()).code, "AI_PAUSED");
+    assert.equal(s.calls.provider.length, 0); assert.equal(s.calls.rpc.length, 0); assert.equal(s.calls.downloads.length, 0);
+  }
+});
+test("review failure never exposes the unreviewed draft or retries", async () => {
+  const s = setup({ reviewError: true }); const res = await s.post();
+  assert.equal(res.status, 502); assert.equal(s.calls.provider.length, 2);
+  assert.equal(s.calls.rpc.at(-1)[1].p_success, false);
+  assert.ok(!(await res.text()).includes("Informação de teste"));
+});
+test("review must supply its own research citations", async () => {
+  const s = setup({ reviewOutput: { status: "completed", output: output.output.slice(1) } });
+  assert.equal((await s.post()).status, 502);
+  assert.equal(s.calls.rpc.at(-1)[1].p_success, false);
+});
+test("promise-only result fails without retrying or marking success", async () => {
+  const raw = structuredClone(output); raw.output[1].content[0].text = "Vou pesquisar fontes oficiais e já volto com as referências.";
+  const s = setup({ output: raw }); const response = await s.post();
+  assert.notEqual(response.status, 200); assert.equal((await response.json()).code, "INCOMPLETE");
+  assert.equal(s.calls.provider.length, 1); assert.equal(s.calls.rpc.at(-1)[1].p_success, false);
 });
 test("private modes scope reads and never send documents to web search", async () => {
   for (const mode of ["document", "compare", "obligations"]) { const s = setup(); const response = await s.post({ ...base, mode, organizationId: org, documentIds: mode === "compare" ? [doc, org] : [doc] }); assert.equal(response.status, 200); assert.ok(s.calls.filters.some(([k, v]) => k === "organization_id" && v === org)); const req = s.calls.provider[0]; assert.equal(req.tools, undefined); assert.equal(req.store, false); assert.ok(req.input[0].content[0].file_data.startsWith("data:application/pdf;base64,")); }

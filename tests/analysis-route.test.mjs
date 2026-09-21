@@ -62,7 +62,7 @@ function setup(options = {}) {
     "@/lib/legal-research": research,
   };
   const exports = {};
-  new Function("require", "exports", "process", "Buffer", "console", source)(name => { if (!(name in modules)) throw new Error(`Unexpected import ${name}`); return modules[name]; }, exports, { env: { OPENAI_API_KEY: options.noKey ? "" : "test-only-not-a-real-key", SUPABASE_SERVICE_ROLE_KEY: "test-only" } }, Buffer, { warn: (...args) => calls.diagnostics.push(args) });
+  new Function("require", "exports", "process", "Buffer", "console", source)(name => { if (!(name in modules)) throw new Error(`Unexpected import ${name}`); return modules[name]; }, exports, { env: { AI_EXECUTION_ENABLED: options.paused ? "false" : "true", OPENAI_API_KEY: options.noKey ? "" : "test-only-not-a-real-key", SUPABASE_SERVICE_ROLE_KEY: "test-only" } }, Buffer, { warn: (...args) => calls.diagnostics.push(args) });
   return { route: exports, calls };
 }
 function request(patch = {}, origin = "http://localhost:3000") { return new Request("http://localhost:3000/api/analyse", { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify({ contractId: id, organizationId: org, consent: true, researchConsent: true, jurisdiction: "AUTO", rerun: false, ...patch }) }); }
@@ -70,6 +70,12 @@ test("route blocks CSRF, missing consent, malformed ids and huge bodies before p
   for (const req of [request({}, "https://evil.invalid"), request({ consent: false }), request({ researchConsent: false }), request({ jurisdiction: "private-company-name" }), request({ contractId: "invalid" }), request({ padding: "x".repeat(2048) })]) {
     const { route, calls } = setup(); assert.ok((await route.POST(req)).status >= 400); assert.equal(calls.provider.length, 0); assert.equal(calls.rpc.length, 0);
   }
+});
+test("paused execution blocks contract analysis before any paid work", async () => {
+  const { route, calls } = setup({ paused: true });
+  const response = await route.POST(request());
+  assert.equal(response.status, 503); assert.equal((await response.json()).code, "AI_PAUSED");
+  assert.equal(calls.provider.length, 0); assert.equal(calls.rpc.length, 0);
 });
 test("unauthenticated and cross-company contract requests cannot start work", async () => {
   for (const options of [{ unauthorized: true }, { contract: null }]) {
