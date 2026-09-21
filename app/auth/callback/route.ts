@@ -10,7 +10,8 @@ export async function GET(request: Request) {
   if (!url || !key) return NextResponse.redirect(`${origin}/login?error=configuration`);
   if (!code) return NextResponse.redirect(`${origin}/login?error=invalid_link`);
   const cookieStore = await cookies();
-  const destination = cookieStore.get("lic_return")?.value === "chat" ? "/chat" : "/dashboard";
+  const returnTo = cookieStore.get("lic_return")?.value;
+  const destination = returnTo === "chat" ? "/chat" : returnTo === "billing" ? "/billing" : "/dashboard";
   const response = NextResponse.redirect(`${origin}${destination}`);
   response.cookies.set("lic_return", "", { path: "/", maxAge: 0 });
   const deadline = AbortSignal.timeout(12000);

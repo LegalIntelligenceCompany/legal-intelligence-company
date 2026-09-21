@@ -180,3 +180,20 @@ O aviso no site mostra a etapa da falha e a mesma referência quando recebe a re
 “Actualizar estado” só consulta o estado guardado: não inicia análise nem pesquisa. Não repita análises automaticamente para obter diagnósticos; uma nova tentativa exige consentimento e pode ter custos. Para comunicar um erro, partilhe apenas a linha `[analysis-diagnostic]` correspondente à referência, nunca o ficheiro `.env.local`.
 
 Esta alteração não requer nova migração SQL. Reinicie o servidor para garantir que utiliza o código actualizado. A identificação dos erros segue a [documentação oficial da OpenAI](https://developers.openai.com/api/docs/guides/error-codes); acrescentar diagnósticos não corrige, por si só, a causa de uma falha anterior.
+# Checkout Stripe — fase de teste, não lançamento comercial
+
+Página `/billing`, acessível em Definições → Testar pagamentos. Configurar na Vercel:
+
+- `STRIPE_SECRET_KEY`: chave `sk_test_` da **mesma sandbox** do preço;
+- `STRIPE_PRICE_ID`: preço recorrente mensal, fixo, activo, EUR;
+- `BILLING_TEST_EMAIL`: e-mail da conta Supabase autorizada a testar (não precisa de ser o e-mail de acesso à Stripe).
+
+Publicar após guardar as variáveis. Esta implementação rejeita chaves live e respostas `livemode:true`; não há opção de activar cobranças reais. Não altera `AI_EXECUTION_ENABLED` nem concede utilização de IA. Não requer migração SQL ou chave Stripe pública. As chamadas Stripe usam REST do servidor, versão fixa `2025-02-24.acacia`, timeout de 15 segundos e sem repetição automática.
+
+O servidor obtém preço/quantidade/identidade e destinos, verifica origem no POST, autentica com Supabase e restringe ao e-mail configurado. Uma chave de idempotência estável durante a tentativa evita duplicação por reenvio na mesma página; não impede novas subscrições de teste em novos separadores ou após recarregar. Antes de repetir consulte a sandbox. A página de regresso lê a sessão na Stripe e verifica pertença à conta, modo de teste, pagamento concluído e subscrição activa. Não confia em `success=true` ou numa declaração do browser. O estado não é persistido localmente e não há recuperação automática se o utilizador não regressar.
+
+Teste manual: entrar no site com a conta permitida, abrir `/billing`, confirmar o montante obtido da Stripe e abrir checkout. Usar apenas cartão fictício `4242 4242 4242 4242`, validade futura e CVC fictício de três dígitos. Regressar ao site e confirmar a mensagem de simulação. Também testar cancelamento, recusa e conta sem autorização. Não usar cartões verdadeiros nem dados de clientes. Referência: https://docs.stripe.com/testing
+
+**Ainda falta antes de vender:** webhooks com verificação de assinatura e processamento idempotente, persistência e reconciliação de subscrições, controlo de acesso/quotas por plano, prevenção de subscrições duplicadas, renovações/falhas/cancelamentos/reembolsos e portal do cliente, preços aprovados, faturação/IVA e textos comerciais. Não basta trocar a chave por uma chave live. O checkout simulado não significa que a plataforma esteja pronta para cobrar.
+
+Os testes automáticos usam respostas fictícias, sem Stripe ou OpenAI reais. Configuração da sandbox e fluxo completo autenticado precisam de validação depois da publicação. A página não faz pedidos à OpenAI.

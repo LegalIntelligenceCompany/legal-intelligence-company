@@ -23,7 +23,8 @@ export default function Login() {
     const supabase = createClient();
     if (!supabase) { setMessage(errors.configuration); return; }
     setLoading(true); setMessage("");
-    document.cookie = `lic_return=${new URLSearchParams(window.location.search).get("next") === "/chat" ? "chat" : "dashboard"}; Path=/; Max-Age=900; SameSite=Lax${window.location.protocol === "https:" ? "; Secure" : ""}`;
+    const next = new URLSearchParams(window.location.search).get("next");
+    document.cookie = `lic_return=${next === "/chat" ? "chat" : next === "/billing" ? "billing" : "dashboard"}; Path=/; Max-Age=900; SameSite=Lax${window.location.protocol === "https:" ? "; Secure" : ""}`;
     try {
       const { error } = await supabase.auth.signInWithOtp({ email: email.trim(), options: { emailRedirectTo: `${window.location.origin}/auth/callback` } });
       setMessage(error ? "Não foi possível enviar o e-mail. Verifique o endereço; se o problema persistir, o administrador deve consultar os registos de autenticação." : "E-mail enviado. A sessão só fica iniciada depois de abrir o link, neste mesmo navegador.");
