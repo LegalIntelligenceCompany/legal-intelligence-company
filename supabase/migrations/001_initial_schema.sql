@@ -1,0 +1,13 @@
+-- Run in Supabase SQL Editor. RLS keeps each tenant's records separate.
+create extension if not exists "uuid-ossp";
+create table public.organizations (id uuid primary key default uuid_generate_v4(), name text not null, created_at timestamptz not null default now());
+create table public.organization_members (organization_id uuid references public.organizations(id) on delete cascade, user_id uuid references auth.users(id) on delete cascade, role text not null check (role in ('owner','admin','member')), primary key (organization_id,user_id));
+create table public.policies (id uuid primary key default uuid_generate_v4(), organization_id uuid not null references public.organizations(id) on delete cascade, title text not null, content text not null, created_at timestamptz not null default now());
+create table public.contracts (id uuid primary key default uuid_generate_v4(), organization_id uuid not null references public.organizations(id) on delete cascade, filename text not null, storage_path text not null, status text not null default 'queued', created_at timestamptz not null default now());
+create table public.findings (id uuid primary key default uuid_generate_v4(), contract_id uuid not null references public.contracts(id) on delete cascade, severity text not null, title text not null, detail text not null, recommendation text, created_at timestamptz not null default now());
+alter table public.organizations enable row level security; alter table public.organization_members enable row level security; alter table public.policies enable row level security; alter table public.contracts enable row level security; alter table public.findings enable row level security;
+create policy "members see organization" on public.organizations for select using (exists (select 1 from public.organization_members m where m.organization_id=id and m.user_id=auth.uid()));
+create policy "members access policies" on public.policies for all using (exists (select 1 from public.organization_members m where m.organization_id=organization_id and m.user_id=auth.uid()));
+create policy "members access contracts" on public.contracts for all using (exists (select 1 from public.organization_members m where m.organization_id=organization_id and m.user_id=auth.uid()));
+create policy "members access findings" on public.findings for select using (exists (select 1 from public.contracts c join public.organization_members m on m.organization_id=c.organization_id where c.id=contract_id and m.user_id=auth.uid()));
+-- Create a private Storage bucket named `contracts`; add per-organization storage policies before enabling uploads.
