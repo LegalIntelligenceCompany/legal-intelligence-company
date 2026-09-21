@@ -7,13 +7,18 @@ export async function GET(request: Request) {
   const code = searchParams.get("code");
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!code || !url || !key) return NextResponse.redirect(`${origin}/login?error=login`);
+  if (!url || !key) return NextResponse.redirect(`${origin}/login?error=configuration`);
+  if (!code) return NextResponse.redirect(`${origin}/login?error=invalid_link`);
   const cookieStore = await cookies();
   const destination = cookieStore.get("lic_return")?.value === "chat" ? "/chat" : "/dashboard";
   const response = NextResponse.redirect(`${origin}${destination}`);
   response.cookies.set("lic_return", "", { path: "/", maxAge: 0 });
-  const supabase = createServerClient(url, key, { cookies: { getAll: () => cookieStore.getAll(), setAll: (items: { name: string; value: string; options: CookieOptions }[]) => items.forEach(({ name, value, options }) => response.cookies.set(name, value, options)) } });
-  const { error } = await supabase.auth.exchangeCodeForSession(code);
-  if (error) return NextResponse.redirect(`${origin}/login?error=login`);
-  return response;
+  const deadline = AbortSignal.timeout(12000);
+  const timedFetch: typeof fetch = (input, init) => fetch(input, { ...init, signal: deadline });
+  const supabase = createServerClient(url, key, { global: { fetch: timedFetch }, cookies: { getAll: () => cookieStore.getAll(), setAll: (items: { name: string; value: string; options: CookieOptions }[]) => items.forEach(({ name, value, options }) => response.cookies.set(name, value, options)) } });
+  try {
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error) return NextResponse.redirect(`${origin}/login?error=${deadline.aborted ? "connection" : "login"}`);
+    return response;
+  } catch { return NextResponse.redirect(`${origin}/login?error=connection`); }
 }

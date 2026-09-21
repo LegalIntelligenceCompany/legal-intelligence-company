@@ -20,6 +20,7 @@ function render(states = {}, organizationId) {
 }
 test("research signup accepts individuals and shows educational profiles", () => {
   const html = render({ 5: "login" }); assert.match(html, /Não precisa de empresa/); assert.match(html, /Estudante/); assert.match(html, /Professor/); assert.match(html, /href="\/login\?next=\/chat"/);
+  assert.equal((html.match(/Entrar para perguntar/g) || []).length, 3);
 });
 test("send remains disabled without consent and private modes explain no web search", () => {
   const html = render({ 5: "ready", 3: "Uma pergunta" }); assert.match(html, /disabled="">Enviar pergunta/); assert.match(html, /fornecedores de pesquisa/);
