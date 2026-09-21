@@ -16,6 +16,8 @@ export function validateAssistantInput(value: unknown): AssistantInput {
   if (!Array.isArray(v.documentIds) || v.documentIds.some(id => typeof id !== "string" || !uuid.test(id)) || new Set(v.documentIds).size !== v.documentIds.length) throw new Error("INVALID_REQUEST");
   if (v.workflow !== undefined && (!isWorkflow(v.workflow) || !workflows[v.workflow].formats.some(f => f === v.format))) throw new Error("INVALID_REQUEST");
   if (v.workflow === undefined && v.format !== undefined) throw new Error("INVALID_REQUEST");
+  if (v.workflow === "explainer" && v.mode !== "document") throw new Error("INVALID_REQUEST");
+  if (v.workflow === "reviewer" && v.mode !== "research" && v.mode !== "document") throw new Error("INVALID_REQUEST");
   if (v.mode === "timeline" ? v.workflow !== "timeline" : v.workflow === "timeline") throw new Error("INVALID_REQUEST");
   if (["references", "caselaw", "watch"].includes(String(v.workflow)) && v.mode !== "research") throw new Error("INVALID_REQUEST");
   const count = v.mode === "research" ? 0 : v.mode === "compare" ? 2 : v.mode === "timeline" ? v.documentIds.length : 1;

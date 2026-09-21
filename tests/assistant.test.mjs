@@ -11,6 +11,14 @@ const services = load("../lib/services.ts", {});
 const assistant = load("../lib/assistant.ts", { "./legal-research": research, "./services": services });
 const id = "10000000-0000-4000-8000-000000000001", org = "20000000-0000-4000-8000-000000000001", doc = "30000000-0000-4000-8000-000000000001";
 const base = { requestId: id, mode: "research", profile: "Estudante", country: "Portugal", question: "Explique um conceito", history: [], documentIds: [], consent: true };
+test('new services preserve payment guards and private PDF isolation',async()=>{
+ for(const workflow of ['explainer','reviewer']){
+  const input={...base,workflow,format:services.workflows[workflow].formats[0],mode:'document',organizationId:org,documentIds:[doc]};
+  const blocked=setup({billingBlocked:true});assert.equal((await blocked.post(input)).status,403);assert.equal(blocked.calls.provider.length,0);
+  const denied=setup({denied:true});assert.equal((await denied.post(input)).status,403);assert.equal(denied.calls.provider.length,0);
+  const allowed=setup();assert.equal((await allowed.post(input)).status,200);for(const call of allowed.calls.provider){assert.equal(call.tools,undefined);assert.equal(call.store,false);}
+ }
+});
 const output = { status: "completed", output: [{ type: "web_search_call", status: "completed" }, { type: "message", content: [{ type: "output_text", text: "Informação de teste [fonte].", annotations: [{ type: "url_citation", start_index: 20, end_index: 27, url: "https://diariodarepublica.pt/teste", title: "Teste" }] }] }] };
 test("input bounds, authentication scope and explicit consent", () => {
   assert.equal(assistant.validateAssistantInput(base).mode, "research");

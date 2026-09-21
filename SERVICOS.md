@@ -1,5 +1,11 @@
 # Serviços jurídicos — implementação e activação
 
+## Explicador e revisor crítico
+
+`/services/explainer` explica um PDF privado (até 10 MB) em linguagem simples, cláusula a cláusula ou como glossário. Exige organização e documento autorizado, usa só o ficheiro e pede excertos/páginas, preservação de condições e indicação de ambiguidades. Não valida legislação externa nem a segurança de assinatura.
+
+`/services/reviewer` oferece revisão crítica, contra-argumentos e mapa de argumentos. Permite texto público com pesquisa de fontes ou PDF privado sem pesquisa externa. Mudar de modo pede confirmação e desmonta a conversa anterior, evitando transportar contexto privado para a pesquisa. A revisão distingue alegações, provas, pressupostos e conclusões; não prevê êxito judicial. Os dois serviços mantêm consentimento, limites e bloqueio de IA paga existentes. Não exigem novo SQL. Testes locais não equivalem a avaliação factual de respostas reais da IA.
+
 O catálogo em `/services` inclui verificação assistida de referências, comparação de jurisprudência, estudo (cinco formatos), ensino (quatro formatos), redacção de minutas e cronologia de um a cinco PDFs. Estes percursos reutilizam a pesquisa e a segunda revisão existentes, com instruções específicas validadas no servidor. Não são verificadores jurídicos determinísticos nem garantem ausência de erros.
 
 `/library` permite criar dossiers pessoais, guardar notas/relatórios e fontes, guardar directamente respostas públicas do chat, exportar e eliminar. A conversa completa não é gravada automaticamente. PDFs permanecem na área de contratos da organização: não são copiados para dossiers pessoais. A associação de ficheiros a dossiers ainda não está implementada.

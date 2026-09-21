@@ -5,21 +5,28 @@ import ts from "typescript";
 import React from "react";
 import * as jsx from "react/jsx-runtime";
 import { renderToStaticMarkup } from "react-dom/server";
+import * as services from '../lib/services.ts';
 const source = ts.transpileModule(readFileSync(new URL("../components/assistant-panel.tsx", import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
-function render(states = {}, organizationId) {
+function render(states = {}, organizationId, workflow) {
   let index = 0;
   const deps = {
     react: { ...React, useState: initial => { const i = index++; return [Object.hasOwn(states, i) ? states[i] : initial, () => {}]; }, useRef: initial => ({ current: initial }), useEffect: () => {} },
     "react/jsx-runtime": jsx,
     "next/link": ({ href, children, ...props }) => React.createElement("a", { href, ...props }, children),
     "@/lib/supabase/client": { createClient: () => null },
-    "@/lib/services": { workflows: {} },
+    "@/lib/services": services,
     "./save-research": { SaveResearch: () => null },
     "@/lib/assistant": { profiles: ["Geral", "Estudante", "Professor", "Advogado", "Empresa"] },
   };
   const exports = {}; new Function("require", "exports", source)(name => { if (!(name in deps)) throw new Error(name); return deps[name]; }, exports);
-  return renderToStaticMarkup(React.createElement(exports.AssistantPanel, { organizationId }));
+  return renderToStaticMarkup(React.createElement(exports.AssistantPanel, { organizationId, workflow }));
 }
+test('explainer and reviewer show formats, correct consent and PDF selection',()=>{
+ const explainer=render({5:'ready'},'company','explainer');
+ assert.match(explainer,/Cláusula a cláusula/);assert.match(explainer,/Glossário do documento/);assert.match(explainer,/Escolha um PDF/);assert.match(explainer,/Sem pesquisa web neste modo/);assert.doesNotMatch(explainer,/id="assistant-mode"/);assert.match(explainer,/disabled="">Enviar pergunta/);
+ const reviewer=render({5:'ready'},undefined,'reviewer');assert.match(reviewer,/Contra-argumentos/);assert.match(reviewer,/Mapa de argumentos/);assert.match(reviewer,/fornecedores de pesquisa/);
+ const privateReviewer=render({5:'ready'},'company','reviewer');assert.match(privateReviewer,/PDFs seleccionados/);assert.doesNotMatch(privateReviewer,/fornecedores de pesquisa/);
+});
 test("research signup accepts individuals and shows educational profiles", () => {
   const html = render({ 5: "login" }); assert.match(html, /Não precisa de empresa/); assert.match(html, /Estudante/); assert.match(html, /Professor/); assert.match(html, /href="\/login\?next=\/chat"/);
   assert.equal((html.match(/Entrar para perguntar/g) || []).length, 3);

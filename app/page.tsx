@@ -3,6 +3,8 @@ import { MarketingNav } from "@/components/marketing-nav";
 import { Icon } from "@/components/icons";
 
 const services = [
+  ["Explicador de documentos", "Compreenda um PDF em linguagem simples, com excertos e páginas para conferir no original.", "/services/explainer", "Compreender um documento"],
+  ["Revisor crítico", "Examine fragilidades, pressupostos e contra-argumentos, distinguindo suporte de pontos por confirmar.", "/services/reviewer", "Rever argumentos"],
   ["Todos os serviços", "Verificação de referências, comparação de jurisprudência, estudo, aulas, minutas e cronologias. IA paga desactivada nesta fase.", "/services", "Explorar serviços"],
   ["Dossiers e temas", "Guarde notas e relatórios. Consulte alterações legislativas manualmente; sem monitorização automática.", "/library", "Abrir dossiers"],
   ["Pesquisa jurídica", "Pesquise legislação e jurisprudência disponíveis na web, com fontes para consultar e limites de vigência explicitados.", "/chat", "Abrir chat jurídico"],
