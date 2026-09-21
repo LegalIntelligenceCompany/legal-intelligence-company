@@ -4,6 +4,29 @@ MVP Next.js + TypeScript, Supabase Auth/DB/Storage e OpenAI no backend. Interfac
 
 ## Estado real e limites
 
+### Chat jurídico e novos serviços (actualização 005)
+
+- A página principal tem um botão **Abrir chat jurídico** para `/chat`. A pesquisa exige login, mas não empresa. Perfis Geral, Estudante, Professor, Advogado e Empresa adaptam as explicações. O âmbito inicial é Portugal/União Europeia.
+- O chat utiliza pesquisa web real e apresenta ligações das anotações de citações devolvidas pelo fornecedor. Sem pesquisa concluída e citações válidas, a resposta é recusada. Não certifica vigência, aplicabilidade ou cobertura integral; é preciso conferir fontes. URLs escritos apenas no texto do modelo não se tornam links clicáveis.
+- `/tools`, dentro da empresa, permite perguntar a um PDF, comparar duas versões (A anterior / B posterior) e extrair obrigações/prazos. Usa os PDFs privados já carregados, até 10 MB no conjunto. As referências de página/excertos são propostas pela IA, não verificadas por um motor de extracção. Não é um diff determinístico nem garante encontrar todas as alterações.
+- Estes três modos documentais **não têm ferramentas de pesquisa web**. A análise contra políticas e com pesquisa jurídica continua em Contratos → abrir contrato → Analisar. A IA nunca altera os originais.
+- As respostas do chat e os relatórios de análise podem ser exportados como **texto (.txt)**. Não há DOCX/PDF formatado nesta versão. O relatório contratual inclui as políticas utilizadas: trate o ficheiro exportado como confidencial.
+- Prazos: extracção em texto + formulário de data/título confirmado pelo utilizador. Exporta `.ics` com alarme um dia antes. É necessário importar o ficheiro e permitir notificações no calendário. **Não existe monitorização de prazos nem envio automático de e-mails pela plataforma.**
+- Conversas só em memória no navegador, não guardadas na base/localStorage. Recarregar, mudar contexto ou terminar sessão limpa-as. Cada novo pedido reenvia no máximo os dois últimos pares de mensagens (respostas limitadas a 10 000 caracteres de contexto). O fornecedor recebe pergunta/contexto; no modo de pesquisa, estes podem seguir para fornecedores de pesquisa. Não inserir dados sensíveis. Nos modos privados, os PDFs seleccionados são reenviados à OpenAI em cada pergunta.
+- Limites atómicos em SQL: um pedido simultâneo por utilizador (reserva de 3 minutos), 20 tentativas por conta e 200 globais em 24 horas para o assistente. A análise contratual existente tem limites separados. Não são limites monetários. Sem retries automáticos; falhas podem ter custos. Os IDs de pedido impedem repetir a mesma chamada enquanto o registo existir.
+- A tabela `assistant_requests` guarda apenas ID, utilizador, datas e estado; o cliente não pode lê-la/escrevê-la. Defina a política de retenção deste registo antes do lançamento. A rota pode durar 180 segundos, com chamada de IA até 120 segundos; não é uma fila durável.
+
+#### Activar esta versão
+
+1. Execute no SQL Editor do Supabase o conteúdo de `supabase/migrations/005_assistant.sql` (repetível). A página `/setup/assistant` permite copiar o código. Para ferramentas privadas, mantenha as migrações 001–004 já instaladas.
+2. Mantenha as mesmas variáveis de servidor OpenAI/Supabase indicadas abaixo. Não é necessária outra chave. `OPENAI_RESEARCH_MODEL` usa o modelo de pesquisa; vazio recorre a `OPENAI_MODEL`.
+3. Teste localmente e publique estes ficheiros através do repositório ligado à Vercel. A alteração local não actualiza sozinha o site publicado.
+4. Confirme o URL de produção e `/auth/callback` no Supabase. Abra `/chat`, entre com um e-mail pessoal ou académico e confirme que não exige criar empresa.
+5. Com consentimento para os custos, teste uma pergunta genérica com fontes e dois PDFs fictícios. Teste também uma segunda conta sem acesso à empresa. Não foram efectuadas chamadas pagas nos testes automatizados.
+6. Antes de abrir inscrições ao público, configure controlo de abuso (verificação de e-mail/CAPTCHA e limites do fornecedor), orçamento, condições de utilização, privacidade, retenção e revisão jurídica. Pagamentos/subscrições, facturação e notificações automáticas por e-mail **não foram implementados nesta actualização**.
+
+Testes adicionais sem serviços externos: `node tests/sql-assistant.mjs` (usa a instalação PGlite descrita abaixo). Os testes de API, citações, consentimento, quotas simuladas e calendário fazem parte de `npm test`. Implementação de pesquisa segundo a [documentação oficial de web search da OpenAI](https://developers.openai.com/api/docs/guides/tools-web-search).
+
 - Login por link de e-mail; criação/selecção de empresa; convites de equipa por link.
 - Upload privado de PDF/DOCX até 20 MB, recuperação de uploads e download autenticado.
 - Políticas reais: criar, editar, pesquisar, arquivar e restaurar.

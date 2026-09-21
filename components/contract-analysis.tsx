@@ -1,4 +1,5 @@
 "use client";
+import { exportAnalysis } from "@/lib/report-export";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { analysisMessage, analysisStages, UUID_PATTERN, MAX_ANALYSIS_BYTES, type AnalysisStage, type AnalysisJob } from "@/lib/analysis";
@@ -86,6 +87,7 @@ export function ContractAnalysis({ contract }: { contract: Contract }) {
       <p>Antes de repetir a análise, consulte o diagnóstico no Terminal. Uma nova tentativa pode ter custos.</p>
     </div>}
     {report && <div className="analysis-report">
+      <button className="btn btn-secondary" onClick={() => { const url = URL.createObjectURL(new Blob([exportAnalysis(job!)], { type: "text/plain;charset=utf-8" })); const a = document.createElement("a"); a.href = url; a.download = "analise-contratual-lic.txt"; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }}>Exportar relatório completo (.txt)</button>
       <div className="workspace-row"><div className="eyebrow">Relatório guardado</div><p className="team-muted">{new Date(job!.created_at).toLocaleString("pt-PT")} · {job!.model} · {job!.policy_snapshot.length} política(s) nesta análise</p><p className="policy-text">{report.summary}</p></div>
       <p className="team-notice">As citações e páginas do PDF foram identificadas pela IA e devem ser conferidas no original. As citações das políticas foram comparadas com o texto guardado. Nenhum resultado garante que o contrato está livre de riscos.</p>
       {report.research ? <section className="workspace-row" aria-label="Âmbito da pesquisa jurídica">

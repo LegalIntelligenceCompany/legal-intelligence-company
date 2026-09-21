@@ -2,7 +2,9 @@ import Link from "next/link";
 import { Icon } from "./icons";
 
 const items = [
+  ["/chat", "file", "Chat jurídico"],
   ["/dashboard", "home", "Visão geral"],
+  ["/tools", "file", "Ferramentas"],
   ["/contracts", "file", "Contratos"],
   ["/policies", "shield", "Políticas"],
   ["/company", "building", "Empresa"],

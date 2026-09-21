@@ -7,6 +7,7 @@ import * as jsx from "react/jsx-runtime";
 import { renderToStaticMarkup } from "react-dom/server";
 import * as analysis from "../lib/analysis.ts";
 import * as research from "../lib/legal-research.ts";
+import { exportAnalysis } from "../lib/report-export.ts";
 
 const source = ts.transpileModule(readFileSync(new URL("../components/contract-analysis.tsx", import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
 function render(report, states = {}) {
@@ -17,6 +18,7 @@ function render(report, states = {}) {
     "react/jsx-runtime": jsx,
     "next/link": ({ href, children, ...props }) => React.createElement("a", { href, ...props }, children),
     "@/lib/analysis": analysis, "@/lib/legal-research": research,
+    "@/lib/report-export": { exportAnalysis },
   };
   const exports = {};
   new Function("require", "exports", source)(name => { if (!(name in modules)) throw new Error(`Unexpected import ${name}`); return modules[name]; }, exports);
