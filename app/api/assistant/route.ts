@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { paidAIAccessError } from "@/lib/billing-access";
 import { assistantInstructions, parseAssistantResponse, validateAssistantInput } from "@/lib/assistant";
 
 export const runtime = "nodejs";
@@ -9,6 +10,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 180;
 const headers = { "Cache-Control": "no-store" };
 const messages: Record<string, string> = {
+  BILLING_TEST_ONLY: "Os pagamentos estão em teste. Uma subscrição simulada não permite chamadas pagas à IA.",
   AI_PAUSED: "A IA está preparada, mas as chamadas pagas ainda não foram activadas pelo administrador. Não foi feita nenhuma chamada à IA.",
   INVALID_REQUEST: "Pedido inválido ou demasiado longo. A pergunta pode ter até 4000 caracteres.",
   UNAUTHORIZED: "Entre na sua conta para utilizar o assistente.", FORBIDDEN: "Não tem acesso a este pedido ou documento.",
@@ -42,6 +44,8 @@ async function handle(request: Request) {
   const { data: auth, error } = await client.auth.getUser();
   if (error || !auth.user) return fail("UNAUTHORIZED", 401);
   if (process.env.AI_EXECUTION_ENABLED !== "true") return fail("AI_PAUSED", 503);
+  const billingError = paidAIAccessError();
+  if (billingError) return fail(billingError, 403);
   const admin = createAdminClient();
   if (!admin || !process.env.OPENAI_API_KEY) return fail("NOT_CONFIGURED", 503);
   let reserved = false;

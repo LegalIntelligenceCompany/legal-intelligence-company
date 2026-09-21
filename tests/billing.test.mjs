@@ -54,10 +54,21 @@ test("Stripe fetch is bounded, server-authenticated and rejects live responses",
 function route(options = {}) {
   const calls = [];
   const b = load("../lib/billing.ts");
+  const account = { user_id: "user1", customer_id: "cus_test", checkout_key: "stable-db-key", checkout_id: options.checkoutId || null, lock_token: "token" };
+  const store = {
+    withBillingLock: async (actor, work) => { assert.equal(actor, "user1"); if (options.busy) throw new Error("BUSY"); return work({ rpc: async (name, args) => { calls.push([name, args]); return { data: {}, error: options.quota ? { message: "QUOTA_EXCEEDED" } : null }; } }, account); },
+    syncSubscriptions: async () => options.rows || [],
+    billingSummary: async () => ({ usage: { assistant: 0, analysis: 0 } }),
+    ensureCustomer: async () => "cus_test",
+    saveCheckout: async () => {},
+    bindCustomer: async () => {},
+    billingDBError: error => { if (error) throw new Error(error.message); },
+  };
   const api = load("../app/api/billing/route.ts", {
     "next/server": { NextResponse: { json: (body, init) => Response.json(body, init) } },
     "@/lib/supabase/server": { createClient: async () => ({ auth: { getUser: async () => ({ data: { user: options.noUser ? null : { id: "user1", email: options.email || "tester@example.com" } }, error: null }) } }) },
-    "@/lib/billing": { ...b, stripeTestRequest: async (...args) => { calls.push(args); if (options.failure) throw new Error("secret must not leak"); return args[0].startsWith("prices/") ? price : options.session || { ...session, url: "https://checkout.stripe.com/c/pay/test" }; } },
+    "@/lib/billing-store": store,
+    "@/lib/billing": { ...b, stripeTestRequest: async (...args) => { calls.push(args); if (options.failure) throw new Error("secret must not leak"); return args[0].startsWith("prices/") ? price : args[0] === "billing_portal/sessions" ? { url: "https://billing.stripe.com/p/session/test" } : options.session || { ...session, id: "cs_test_abc", url: "https://checkout.stripe.com/c/pay/test" }; } },
   });
   return { ...api, calls };
 }
@@ -93,4 +104,47 @@ test("confirmation API hides other users' sessions and rejects fake/live ids", a
 test("provider failures never expose credentials or raw messages", async () => {
   const api = route({ failure: true }); const response = await api.POST(post());
   assert.equal(response.status, 503); assert.doesNotMatch(await response.text(), /secret must not leak|sk_test/);
+});
+test("active, delinquent and pending subscriptions block duplicate checkout", async () => {
+  for (const status of ["active", "past_due", "unpaid", "incomplete", "trialing", "paused"]) {
+    const api = route({ rows: [{ status }] });
+    assert.equal((await api.POST(post())).status, 409); assert.equal(api.calls.length, 0);
+  }
+});
+test("existing open checkout is reused; a terminal subscription permits replacement", async () => {
+  const api = route({ checkoutId: "cs_test_old", session: { ...session, status: "open", url: "https://checkout.stripe.com/c/pay/old" } });
+  const res = await api.POST(post()); assert.equal(res.status, 200);
+  assert.equal((await res.json()).url, "https://checkout.stripe.com/c/pay/old");
+  assert.ok(!api.calls.some(([path]) => path === "checkout/sessions"));
+  assert.equal((await route({ rows: [{ status: "canceled" }] }).POST(post())).status, 200);
+});
+test("portal uses only server-bound customer and trusted return URL", async () => {
+  const api = route();
+  const req = new Request("https://example.com/api/billing?action=portal", { method: "POST", headers: { origin: "https://example.com", "x-checkout-request-id": id }, body: '{"customer":"cus_victim"}' });
+  assert.equal((await api.POST(req)).status, 200);
+  assert.equal(api.calls[0][1].get("customer"), "cus_test");
+  assert.equal(api.calls[0][1].get("return_url"), "https://example.com/billing");
+});
+test("quota simulation passes identity to atomic RPC and exposes a safe limit error", async () => {
+  const api = route({ quota: true });
+  const res = await api.POST(new Request("https://example.com/api/billing?action=simulate-assistant", { method: "POST", headers: { origin: "https://example.com", "x-checkout-request-id": id } }));
+  assert.equal(res.status, 429); assert.equal(api.calls[0][0], "billing_test_use");
+  assert.equal(api.calls[0][1].p_actor, "user1");
+});
+test("subscription policy blocks unsupported prices, unpaid invoices, pauses and expired periods", () => {
+  const b = load("../lib/billing.ts");
+  const now = Math.floor(Date.now()/1000);
+  const raw = { id: "sub_test", customer: "cus_test", livemode: false, status: "active", current_period_start: now-60, current_period_end: now+3600,
+    items: { data: [{ quantity: 1, price: { id: "price_test" } }] }, latest_invoice: { livemode: false, customer: "cus_test", subscription: "sub_test", status: "paid", amount_paid: 1000 } };
+  const snapshot = b.subscriptionSnapshot(raw, "cus_test", "price_test");
+  assert.equal(b.testEntitlement([snapshot]).eligible, true);
+  assert.equal(b.testEntitlement([snapshot]).aiEnabled, false);
+  assert.equal(b.testEntitlement([{ ...snapshot, cancel_at_period_end: true }]).eligible, true);
+  for (const patch of [{ status: "past_due" }, { status: "canceled" }, { latest_invoice: { ...raw.latest_invoice, status: "open" } }, { latest_invoice: { ...raw.latest_invoice, customer: "cus_wrong" } }, { pause_collection: { behavior: "void" } }, { items: { data: [{ quantity: 1, price: { id: "price_wrong" } }] } }]) {
+    assert.equal(b.testEntitlement([b.subscriptionSnapshot({ ...raw, ...patch }, "cus_test", "price_test")]).eligible, false);
+  }
+  assert.equal(b.testEntitlement([{ ...snapshot, period_end: new Date(0).toISOString() }]).eligible, false);
+  assert.throws(() => b.subscriptionSnapshot({ ...raw, livemode: true }, "cus_test", "price_test"));
+  assert.throws(() => b.subscriptionSnapshot(raw, "cus_wrong", "price_test"));
+  assert.equal(load("../lib/billing-access.ts").paidAIAccessError(), "BILLING_TEST_ONLY");
 });

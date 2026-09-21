@@ -58,6 +58,7 @@ function setup(options = {}) {
     openai: OpenAI,
     "@/lib/supabase/server": { createClient: async () => client },
     "@/lib/supabase/admin": { createAdminClient: () => options.noAdmin ? null : admin },
+    "@/lib/billing-access": { paidAIAccessError: () => options.billingBlocked ? "BILLING_TEST_ONLY" : "" },
     "@/lib/analysis": analysis,
     "@/lib/legal-research": research,
   };
@@ -75,6 +76,12 @@ test("paused execution blocks contract analysis before any paid work", async () 
   const { route, calls } = setup({ paused: true });
   const response = await route.POST(request());
   assert.equal(response.status, 503); assert.equal((await response.json()).code, "AI_PAUSED");
+  assert.equal(calls.provider.length, 0); assert.equal(calls.rpc.length, 0);
+});
+test("test subscriptions cannot enable paid contract analysis", async () => {
+  const { route, calls } = setup({ billingBlocked: true });
+  const response = await route.POST(request());
+  assert.equal(response.status, 403); assert.equal((await response.json()).code, "BILLING_TEST_ONLY");
   assert.equal(calls.provider.length, 0); assert.equal(calls.rpc.length, 0);
 });
 test("unauthenticated and cross-company contract requests cannot start work", async () => {

@@ -66,7 +66,7 @@ function setup(options = {}) {
     storage: { from: () => ({ download: async path => { calls.downloads.push(path); return { data: pdf }; } }) } };
   const admin = { rpc: async (name, args) => { calls.rpc.push([name, args]); return { error: name === "assistant_begin" ? options.claimError : null }; } };
   class OpenAI { async post(_path, params) { calls.provider.push(params.body); if (options.providerError || (options.reviewError && calls.provider.length === 2)) throw new Error("SECRET PROVIDER CONTENT"); return (calls.provider.length === 2 ? options.reviewOutput : options.output) ?? output; } }
-  const route = load("../app/api/assistant/route.ts", { "next/server": { NextResponse: { json: (data, init) => Response.json(data, init) } }, openai: OpenAI, "@/lib/assistant": assistant, "@/lib/supabase/server": { createClient: async () => client }, "@/lib/supabase/admin": { createAdminClient: () => admin } }, options.env);
+  const route = load("../app/api/assistant/route.ts", { "@/lib/billing-access": { paidAIAccessError: () => options.billingBlocked ? "BILLING_TEST_ONLY" : "" }, "next/server": { NextResponse: { json: (data, init) => Response.json(data, init) } }, openai: OpenAI, "@/lib/assistant": assistant, "@/lib/supabase/server": { createClient: async () => client }, "@/lib/supabase/admin": { createAdminClient: () => admin } }, options.env);
   return { calls, post: (body = base, origin = "https://lic.test") => route.POST(new Request("https://lic.test/api/assistant", { method: "POST", headers: { origin, "Content-Type": "application/json" }, body: JSON.stringify(body) })) };
 }
 test("route rejects cross-origin, unauthenticated and malformed requests before paid calls", async () => {
@@ -86,6 +86,11 @@ test("paid calls are disabled unless explicitly enabled", async () => {
     assert.equal(res.status, 503); assert.equal((await res.json()).code, "AI_PAUSED");
     assert.equal(s.calls.provider.length, 0); assert.equal(s.calls.rpc.length, 0); assert.equal(s.calls.downloads.length, 0);
   }
+});
+test("sandbox billing blocks AI even with the execution switch enabled", async () => {
+  const s = setup({ billingBlocked: true }); const response = await s.post();
+  assert.equal(response.status, 403); assert.equal((await response.json()).code, "BILLING_TEST_ONLY");
+  assert.equal(s.calls.provider.length, 0); assert.equal(s.calls.rpc.length, 0);
 });
 test("review failure never exposes the unreviewed draft or retries", async () => {
   const s = setup({ reviewError: true }); const res = await s.post();

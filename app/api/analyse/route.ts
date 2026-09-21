@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { paidAIAccessError } from "@/lib/billing-access";
 import { analysisInstructions, analysisMessage, MAX_ANALYSIS_BYTES, legalReportSchema, UUID_PATTERN, validatePolicies, validateReport, type AnalysisJob } from "@/lib/analysis";
 import { emptyResearch, isJurisdiction, legalAnalysisInstructions, parseResearch, planInstructions, planSchema, researchRequest, validatePlan } from "@/lib/legal-research";
 import type { AnalysisStage } from "@/lib/analysis";
@@ -95,6 +96,8 @@ export async function POST(request: Request) {
     if (!client) return failure("NOT_CONFIGURED", 503);
     const { data: auth, error: authError } = await client.auth.getUser();
     if (authError || !auth.user) return failure("UNAUTHORIZED", 401);
+    const billingError = paidAIAccessError();
+    if (billingError) return NextResponse.json({ code: billingError, error: "Os pagamentos estão em teste. Uma subscrição simulada não permite chamadas pagas à IA." }, { status: 403, headers });
     const contract = await client.from("contracts").select("id,organization_id,storage_path,byte_size,mime_type,status")
       .eq("id", body.contractId).eq("organization_id", body.organizationId).maybeSingle();
     if (contract.error) return failure(dbCode(contract.error), 503);
