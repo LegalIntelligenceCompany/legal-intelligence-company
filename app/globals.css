@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+.lic-plans-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;margin:24px 0}
+.lic-plan-price{font-family:Georgia,serif;font-size:44px;line-height:1.2;margin:18px 0}
+.lic-plan-price small{font-family:Arial,sans-serif;font-size:16px}
+@media(max-width:760px){.lic-plans-grid{grid-template-columns:1fr}}
+
 /* Show the complete supplied artwork (symbol AND lettering). Only the large
    empty outer margins are outside this proportional frame: x620 y740 760x520
    in the original 2000x2000 image. Keep the same frame at every breakpoint. */

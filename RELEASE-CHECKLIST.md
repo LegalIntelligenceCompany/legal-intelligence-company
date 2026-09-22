@@ -31,6 +31,15 @@ Pedidos e respostas locais ficam acessíveis por 24 horas, apenas ao dono atrav�
 
 ## Bloqueios para lançamento comercial
 
+### Catálogo aprovado em 22/09/2026
+
+- LIC Individual: 49 EUR/mês, preço base, 1 utilizador.
+- LIC Empresas: 99 EUR/mês por empresa, preço base, 3 utilizadores com créditos partilhados (não 99 EUR por lugar).
+- IVA acresce quando aplicável. `tax_behavior=exclusive` não configura registos fiscais nem activa cálculo/cobrança automática de impostos.
+- `/setup/plans` está restrito à conta de configuração confirmada; permite consultar/criar os dois preços na Stripe TESTE por lookup keys versionadas. Repetições reutilizam os preços; conflitos de montante, moeda, imposto, lugares ou periodicidade bloqueiam a operação. O plano antigo não é alterado.
+- Não há checkout comercial nem atribuição de saldo nesta fase. Quantidade/validade dos créditos e carregamentos continuam por definir e implementar. Metadados de três lugares não substituem controlo de membros nem uma carteira partilhada atómica.
+- Após publicar, abrir `/setup/plans` e criar/confirmar os dois preços de teste. Não é necessária migração SQL nova: usa o bloqueio da migração 006 já instalada. Nenhuma operação desta página chama a IA.
+
 - Stripe continua em sandbox; não existem permissões de IA para clientes pagantes em produção. Não basta trocar chaves.
 - Preços/quotas comerciais, facturação e requisitos fiscais/contratuais precisam de definição e validação apropriada.
 - Fazer avaliação jurídica representativa, testes reais dos serviços com documentos fictícios e revisão de privacidade antes de aceitar documentos de clientes.

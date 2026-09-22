@@ -61,6 +61,7 @@ export function BillingPanel() {
       {summary?.canManage && <button className="btn btn-primary" disabled={busy} onClick={() => action("portal")}>Gerir subscrição na Stripe</button>}
       <button className="btn btn-secondary" disabled={busy} onClick={() => void load()}>Actualizar estado</button>
       <Link className="btn btn-secondary" href="/setup/billing">Preparar pagamentos</Link>
+      <Link className="btn btn-secondary" href="/setup/plans">Planos Individual e Empresas</Link>
     </div>
     {busy && <p>A comunicar com a Stripe…</p>}
     {summary?.subscriptions.map(s => <div className="workspace-row" key={s.id}>
