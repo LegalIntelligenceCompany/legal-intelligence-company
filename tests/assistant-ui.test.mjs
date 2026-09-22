@@ -6,6 +6,7 @@ import React from "react";
 import * as jsx from "react/jsx-runtime";
 import { renderToStaticMarkup } from "react-dom/server";
 import * as services from '../lib/services.ts';
+import * as transport from '../lib/assistant-stream.ts';
 const source = ts.transpileModule(readFileSync(new URL("../components/assistant-panel.tsx", import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
 function render(states = {}, organizationId, workflow) {
   let index = 0;
@@ -15,6 +16,7 @@ function render(states = {}, organizationId, workflow) {
     "next/link": ({ href, children, ...props }) => React.createElement("a", { href, ...props }, children),
     "@/lib/supabase/client": { createClient: () => null },
     "@/lib/services": services,
+    '@/lib/assistant-stream':transport,
     "./save-research": { SaveResearch: () => null },
     "@/lib/assistant": { profiles: ["Geral", "Estudante", "Professor", "Advogado", "Empresa"] },
   };
@@ -34,6 +36,10 @@ test('explainer and reviewer show formats, correct consent and PDF selection',()
 test("research signup accepts individuals and shows educational profiles", () => {
   const html = render({ 5: "login" }); assert.match(html, /Não precisa de empresa/); assert.match(html, /Estudante/); assert.match(html, /Professor/); assert.match(html, /href="\/login\?next=\/chat"/);
   assert.equal((html.match(/Entrar para perguntar/g) || []).length, 3);
+});
+test('pending chat shows real stage and elapsed time without claiming a percentage',()=>{
+ const html=render({5:'ready',10:true,18:'review',19:82});
+ assert.match(html,/A rever a resposta e as fontes/);assert.match(html,/1:22/);assert.match(html,/<progress/);assert.match(html,/Não é uma percentagem/);
 });
 test("send remains disabled without consent and private modes explain no web search", () => {
   const html = render({ 5: "ready", 3: "Uma pergunta" }); assert.match(html, /disabled="">Enviar pergunta/); assert.match(html, /fornecedores de pesquisa/);

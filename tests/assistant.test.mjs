@@ -78,15 +78,26 @@ test("calendar validates real dates, prevents line injection and folds unicode",
   assert.ok(ics.split("\r\n").every(line => Buffer.byteLength(line) <= 75));
 });
 function setup(options = {}) {
-  const calls = { provider: [], rpc: [], filters: [], downloads: [] }; const pdf = new Blob(["%PDF-1.7 test"]);
+  const calls = { provider: [], rpc: [], filters: [], downloads: [], timeouts: [] }; const pdf = new Blob(["%PDF-1.7 test"]);
   const client = { auth: { getUser: async () => ({ data: { user: options.unauthorized ? null : { id } } }) },
     from() { const q = { select() { return q; }, eq(k, v) { calls.filters.push([k, v]); return q; }, maybeSingle: async () => ({ data: options.denied ? null : { storage_path: "scoped-file", byte_size: options.size ?? pdf.size, status: "uploaded", mime_type: "application/pdf" } }) }; return q; },
     storage: { from: () => ({ download: async path => { calls.downloads.push(path); return { data: pdf }; } }) } };
   const admin = { rpc: async (name, args) => { calls.rpc.push([name, args]); return { data: true, error: name === 'ai_pilot_reserve' ? options.budgetError : name === "assistant_begin" ? options.claimError : null }; } };
-  class OpenAI { async post(_path, params) { calls.provider.push(params.body); if (options.providerError || (options.reviewError && calls.provider.length === 2)) throw new Error("SECRET PROVIDER CONTENT"); return (calls.provider.length === 2 ? options.reviewOutput : options.output) ?? output; } }
+  class OpenAI { async post(_path, params) { calls.provider.push(params.body);calls.timeouts.push(params.timeout);if(options.namedError)throw Object.assign(new Error('SECRET PROVIDER CONTENT'),options.namedError);if(options.deferred)await options.deferred; if (options.providerError || (options.reviewError && calls.provider.length === 2)) throw new Error("SECRET PROVIDER CONTENT"); return (calls.provider.length === 2 ? options.reviewOutput : options.output) ?? output; } }
   const route = load("../app/api/assistant/route.ts", { '@/lib/ai-pilot':pilotModule(options.pilot), "@/lib/billing-access": { paidAIAccessError: () => options.billingBlocked ? "BILLING_TEST_ONLY" : "" }, "next/server": { NextResponse: { json: (data, init) => Response.json(data, init) } }, openai: OpenAI, "@/lib/assistant": assistant, "@/lib/supabase/server": { createClient: async () => client }, "@/lib/supabase/admin": { createAdminClient: () => admin } }, options.env);
-  return { calls, post: (body = base, origin = "https://lic.test") => route.POST(new Request("https://lic.test/api/assistant", { method: "POST", headers: { origin, "Content-Type": "application/json" }, body: JSON.stringify(body) })) };
+  return { calls, post: (body = base, origin = "https://lic.test",stream=false) => route.POST(new Request("https://lic.test/api/assistant", { method: "POST", headers: { origin, "Content-Type": "application/json",...(stream?{Accept:'application/x-ndjson'}:{}) }, body: JSON.stringify(body) })) };
 }
+test('stream sends immediate progress, then review and only a validated final answer',async()=>{
+ let release;const deferred=new Promise(r=>release=r);const s=setup({deferred});const response=await s.post(base,'https://lic.test',true);
+ assert.match(response.headers.get('content-type'),/ndjson/);const reader=response.body.getReader();const first=new TextDecoder().decode((await reader.read()).value);assert.match(first,/checking/);assert.doesNotMatch(first,/Informação/);
+ release();let rest='';while(true){const part=await reader.read();if(part.done)break;rest+=new TextDecoder().decode(part.value);}
+ const events=rest.trim().split('\n').map(JSON.parse);assert.ok(events.some(e=>e.stage==='review'));assert.equal(events.at(-1).type,'done');assert.equal(events.at(-1).status,200);assert.equal(s.calls.provider.length,2);assert.ok(s.calls.timeouts.every(t=>t>75000&&t<=110000));
+});
+test('timeout, provider limits and configuration errors stay distinct without leaking bodies',async()=>{
+ for(const [namedError,code] of [[{name:'APIConnectionTimeoutError'},'TIMEOUT'],[{status:429},'PROVIDER_LIMIT'],[{status:400},'PROVIDER_CONFIG']]){
+ const s=setup({namedError});const response=await s.post(base,'https://lic.test',true);const events=(await response.text()).trim().split('\n').map(JSON.parse);const final=events.at(-1);assert.equal(final.data.code,code);assert.ok(final.status>=400);assert.doesNotMatch(JSON.stringify(events),/SECRET/);assert.equal(s.calls.provider.length,1);assert.equal(s.calls.rpc.at(-1)[1].p_success,false);
+ }
+});
 test("route rejects cross-origin, unauthenticated and malformed requests before paid calls", async () => {
   let s = setup(); assert.equal((await s.post(base, "https://evil.test")).status, 403); assert.equal(s.calls.provider.length, 0);
   s = setup({ unauthorized: true }); assert.equal((await s.post()).status, 401); assert.equal(s.calls.rpc.length, 0);

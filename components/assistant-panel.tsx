@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { workflows, type Workflow } from "@/lib/services";
 import { SaveResearch } from './save-research';
+import {readAssistantResponse,assistantStages} from '@/lib/assistant-stream';
 import { calendarReminder, profiles, reportText, type AssistantMode, type AssistantResult } from "@/lib/assistant";
 
 export function downloadReport(text: string, name: string, type = "text/plain;charset=utf-8") {
@@ -34,6 +35,9 @@ export function AssistantPanel({ organizationId, workflow }: { organizationId?: 
   const [format, setFormat] = useState<string>(workflow ? workflows[workflow].formats[0] : "");
   const [selectedDocuments, setSelectedDocuments] = useState<string[]>([]);
   const [material, setMaterial] = useState("");
+  const [stage,setStage]=useState('checking');
+  const [elapsed,setElapsed]=useState(0);
+  const activeRequest=useRef<AbortController|null>(null);
   const multiDocument = mode === "timeline" || mode === "collection";
   const pending = useRef(false); const epoch = useRef(0); const user = useRef<string | null>(null);
   useEffect(() => {
@@ -52,20 +56,23 @@ export function AssistantPanel({ organizationId, workflow }: { organizationId?: 
     }
     client.auth.getUser().then(({ data }) => load(data.user?.id ?? null)).catch(() => { if (alive) setSession("login"); });
     const { data } = client.auth.onAuthStateChange((_event, s) => { setTimeout(() => { void load(s?.user.id ?? null); }, 0); });
-    return () => { alive = false; epoch.current++; data.subscription.unsubscribe(); };
+    return () => { alive = false; epoch.current++; activeRequest.current?.abort(); data.subscription.unsubscribe(); };
   }, [organizationId]);
   function clear() { epoch.current++; setTurns([]); setQuestion(""); setError(""); setConsent(false); setDate(""); setTitle(""); setDateConfirmed(false); }
   async function send(event: React.FormEvent) {
     event.preventDefault(); if (pending.current || session !== "ready") return;
-    pending.current = true; setBusy(true); setError(""); const version = epoch.current; const asked = question.trim();
+    pending.current = true; setBusy(true); setError("");setStage('checking');setElapsed(0); const version = epoch.current; const asked = question.trim();
+    const controller=new AbortController();activeRequest.current=controller;const started=Date.now();
+    const clock=setInterval(()=>{if(epoch.current===version)setElapsed(Math.floor((Date.now()-started)/1000));},1000);
+    const timeout=setTimeout(()=>controller.abort(),175000);
     try {
       const history = turns.slice(-2).flatMap(t => [{ role: "user", content: t.question }, { role: "assistant", content: t.result.text.slice(0, 10000) }]);
-      const response = await fetch("/api/assistant", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requestId: crypto.randomUUID(), mode, profile, country, question: asked, history, consent, organizationId, ...(workflow ? {workflow, format} : {}), ...(mode === "private-text" ? {material} : {}), documentIds: mode === "research" || mode === "private-text" ? [] : multiDocument ? selectedDocuments : mode === "compare" ? [documentA, documentB] : [documentA] }) });
-      const data = await response.json(); if (epoch.current !== version) return;
+      const response = await fetch("/api/assistant", { method: "POST",signal:controller.signal, headers: { "Content-Type": "application/json",Accept:'application/x-ndjson' }, body: JSON.stringify({ requestId: crypto.randomUUID(), mode, profile, country, question: asked, history, consent, organizationId, ...(workflow ? {workflow, format} : {}), ...(mode === "private-text" ? {material} : {}), documentIds: mode === "research" || mode === "private-text" ? [] : multiDocument ? selectedDocuments : mode === "compare" ? [documentA, documentB] : [documentA] }) });
+      const data = await readAssistantResponse(response,next=>{if(epoch.current===version)setStage(next);}); if (epoch.current !== version) return;
       if (!response.ok || !data.result) { setError(data.error ?? "Não foi possível concluir o pedido."); return; }
-      setTurns(old => [...old, { question: asked, result: data.result }]); setQuestion("");
-    } catch { if (epoch.current === version) setError("A ligação foi interrompida. O pedido pode ter tido custos; aguarde antes de tentar novamente."); }
-    finally { pending.current = false; setBusy(false); }
+      const result=data.result;setTurns(old => [...old, { question: asked, result }]); setQuestion("");
+    } catch { if (epoch.current === version) setError((controller.signal.aborted?'A espera atingiu o limite.':'A ligação foi interrompida antes de recebermos uma resposta completa.')+' Não repetimos o pedido. O servidor pode ainda estar a processar e a reserva mantém-se. Consulte o orçamento antes de outra tentativa.'); }
+    finally { clearInterval(clock);clearTimeout(timeout);activeRequest.current=null;pending.current = false; setBusy(false); }
   }
   function calendar() {
     try { downloadReport(calendarReminder(title, date), "prazo-confirmado.ics", "text/calendar;charset=utf-8"); }
@@ -89,7 +96,8 @@ export function AssistantPanel({ organizationId, workflow }: { organizationId?: 
     <section className="card team-panel assistant-main" aria-label="Conversa com o assistente">
       {!turns.length && <div><div className="eyebrow">{organizationId ? "Revisão documental" : "Direito para pesquisar, estudar e trabalhar"}</div><h2>{organizationId ? "O que pretende descobrir?" : "Como posso ajudar na sua pesquisa?"}</h2><p>{organizationId ? "Seleccione os documentos e descreva o que pretende. A comparação com políticas continua disponível na análise de cada contrato." : mode === "private-text" ? "Trabalhe sobre notas ou transcrições: perguntas propostas, acta para revisão e tarefas com suporte no texto. Sem pesquisa externa." : "Legislação, jurisprudência e conceitos jurídicos, com pesquisa na web e citações para consultar. Não é uma base exaustiva de todo o direito."}</p>{!organizationId && !workflow && <div className="assistant-starters">{starters.map(s => session === "ready" ? <button type="button" className="btn btn-secondary" key={s} onClick={() => { setQuestion(s); document.getElementById("assistant-question")?.focus(); }}>{s}</button> : <a className="btn btn-secondary" key={s} href="/login?next=/chat">{s}<span className="assistant-small"> — Entrar para perguntar</span></a>)}</div>}</div>}
       <div aria-live="polite" aria-busy={busy}>{turns.map((turn, i) => <article className="assistant-turn" key={i}><h3 className="assistant-question">{turn.question}</h3><p className="assistant-small">{turn.result.researched ? "Pesquisa web com citações · vigência a confirmar" : "Baseado nos documentos · sem pesquisa web"} · {new Date(turn.result.generatedAt).toLocaleString("pt-PT")}</p>{turn.result.review === "second-pass" && <p className="assistant-small">{turn.result.model} · Segunda revisão por IA concluída; não equivale a validação por jurista.</p>}<Answer result={turn.result}/>{mode === "research" && <SaveResearch question={turn.question} result={turn.result}/>}<button type="button" className="btn btn-secondary" onClick={() => downloadReport((multiDocument ? selectedDocuments.map((id,i)=>`Documento ${String.fromCharCode(65+i)}: ${documents.find(d=>d.id===id)?.filename??id}`).join("\n")+"\n\n" : "")+reportText(turn.result), "relatorio-lic.txt")}>Exportar resposta e fontes</button></article>)}{busy && <p role="status" className="team-notice">{mode === "research" ? "A pesquisar fontes, elaborar e rever a resposta…" : "A ler os documentos, elaborar e rever a resposta…"} Pode demorar até três minutos. Não volte a enviar.</p>}</div>
-      {error && <p role="alert" className="workspace-error">{error}{error.includes("005") && <> <Link className="source-link" href="/setup/assistant">Instruções de activação</Link></>}</p>}
+      {busy&&<div role="status"><p>{assistantStages[stage]} Tempo decorrido: {Math.floor(elapsed/60)}:{String(elapsed%60).padStart(2,'0')}.</p><progress aria-label="Pedido em processamento"/><p>Não é uma percentagem de conclusão. Mantenha a página aberta; não repetimos pedidos automaticamente.</p></div>}
+      {error && <p role="alert" className="workspace-error">{error} <Link className="source-link" href="/setup/pilot">Consultar orçamento de teste</Link>{error.includes("005") && <> <Link className="source-link" href="/setup/assistant">Instruções de activação</Link></>}</p>}
       {session === "loading" ? <p>A verificar a sessão…</p> : session === "login" ? <p className="team-notice">Entre com o seu e-mail para utilizar IA. Não precisa de empresa para pesquisar direito. <Link className="btn btn-primary" href="/login?next=/chat">Entrar</Link></p> : <form onSubmit={send}>
         {mode === "private-text" && <><p>Texto privado, sem pesquisa web. Cole notas ou uma transcrição revista (até 60 000 caracteres). Não fica guardado automaticamente. <Link href="/transcription">Abrir transcrição de áudio</Link></p><label htmlFor="meeting-material">Notas ou transcrição original</label><textarea id="meeting-material" rows={10} maxLength={60000} required disabled={busy} value={material} onChange={e => { clear(); setMaterial(e.target.value); }}/><button type="button" className="btn btn-secondary" disabled={busy} onClick={() => {clear(); setMaterial("");}}>Apagar material e conversa</button></>}
         <label htmlFor="assistant-question">{mode === "obligations" ? "Indique as obrigações ou prazos a extrair" : "A sua pergunta"}</label><textarea id="assistant-question" rows={4} maxLength={4000} required disabled={busy} value={question} onChange={e => setQuestion(e.target.value)} placeholder={workflow ? workflows[workflow].placeholder : mode === "compare" ? "Compare as versões e identifique alterações de responsabilidade, prazos e riscos." : mode === "obligations" ? "Extraia obrigações, prazos de pagamento, renovação e denúncia, com excertos e páginas." : "Escreva a pergunta sem dados confidenciais…"}/>
