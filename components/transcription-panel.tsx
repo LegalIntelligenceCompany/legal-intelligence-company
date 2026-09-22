@@ -9,6 +9,7 @@ export function TranscriptionPanel(){
  const [file,setFile]=useState<File|null>(null),[preview,setPreview]=useState(''),[text,setText]=useState(''),[error,setError]=useState('');
  const [consent,setConsent]=useState(false),[recording,setRecording]=useState(false),[starting,setStarting]=useState(false),[busy,setBusy]=useState(false),[seconds,setSeconds]=useState(0),[language,setLanguage]=useState('auto');
  const [status,setStatus]=useState({enabled:false,message:'A verificar a conta e disponibilidade…',login:false});
+ const [waiting,setWaiting]=useState(0);
  const recorder=useRef<MediaRecorder|null>(null),stream=useRef<MediaStream|null>(null),timer=useRef<ReturnType<typeof setInterval>|null>(null),epoch=useRef(0),pending=useRef(false),request=useRef<AbortController|null>(null),user=useRef<string|null>(null),asking=useRef(false);
  function stop(){if(recorder.current?.state==='recording')recorder.current.stop();stream.current?.getTracks().forEach(t=>t.stop());stream.current=null;if(timer.current)clearInterval(timer.current);timer.current=null;}
  function clear(){epoch.current++;stop();request.current?.abort();setFile(null);setText('');setConsent(false);setError('');setRecording(false);setSeconds(0);}
@@ -43,9 +44,12 @@ export function TranscriptionPanel(){
   }catch(e){stop();if(version===epoch.current)setError(e instanceof DOMException&&e.name==='NotAllowedError'?'Permissão do microfone recusada. Autorize no navegador ou carregue um ficheiro.':e instanceof Error?e.message:'Não foi possível iniciar a gravação.');}
   finally{asking.current=false;setStarting(false);}
  }
- async function transcribe(){if(pending.current||!file||!consent||!status.enabled)return;pending.current=true;setBusy(true);setError('');setText('');const version=epoch.current;const controller=new AbortController();request.current=controller;
-  try{const r=await fetch('/api/transcription',{method:'POST',signal:controller.signal,headers:{'Content-Type':'application/octet-stream','x-request-id':crypto.randomUUID(),'x-audio-consent':'true','x-audio-extension':audioExtension(file.name),'x-audio-language':language},body:file});const d=await r.json();if(version!==epoch.current)return;if(!r.ok)throw Error(d.error||'Não foi possível transcrever.');setText(d.text);}
-  catch(e){if(version===epoch.current)setError(e instanceof Error?e.message:'Ligação interrompida. A tentativa pode ter tido custos.');}finally{pending.current=false;setBusy(false);request.current=null;}
+ async function transcribe(){if(pending.current||!file||!consent||!status.enabled)return;pending.current=true;setBusy(true);setWaiting(0);setError('');setText('');const version=epoch.current;const controller=new AbortController();request.current=controller;
+  const began=Date.now();let timedOut=false;
+  const clock=setInterval(()=>{if(version===epoch.current)setWaiting(Math.floor((Date.now()-began)/1000));},1000);
+  const deadline=setTimeout(()=>{timedOut=true;controller.abort();},150000);
+  try{const r=await fetch('/api/transcription',{method:'POST',signal:controller.signal,headers:{'Content-Type':'application/octet-stream','x-request-id':crypto.randomUUID(),'x-audio-consent':'true','x-audio-extension':audioExtension(file.name),'x-audio-language':language},body:file});const d=await r.json().catch(()=>{throw Error('O servidor não devolveu uma resposta válida. A tentativa pode ter tido custos; não repita de imediato.');});if(version!==epoch.current)return;if(!r.ok)throw Error(d.error||'Não foi possível transcrever.');if(typeof d.text!=='string'||!d.text.trim())throw Error('Não recebemos texto da transcrição. O áudio continua disponível; não repita de imediato.');setText(d.text);}
+  catch(e){if(version===epoch.current)setError(controller.signal.aborted?(timedOut?'A espera excedeu 2 minutos e 30 segundos.':'Deixou de aguardar a resposta.')+' O áudio continua nesta página. O servidor pode ainda estar a processar e a tentativa pode ter custos. Não repita de imediato.':e instanceof Error&&!(e instanceof TypeError)?e.message:'A ligação foi interrompida. O áudio continua disponível. A tentativa pode ter tido custos; não repita de imediato.');}finally{clearInterval(clock);clearTimeout(deadline);pending.current=false;setBusy(false);request.current=null;}
  }
  return <section className="card team-panel">
   <p role="status">{status.message} {status.login&&<Link href="/login?next=/transcription">Entrar</Link>}</p>
@@ -58,6 +62,16 @@ export function TranscriptionPanel(){
   {file&&<div><p>{file.name} — {(file.size/1024/1024).toFixed(2)} MB</p>{preview&&<audio aria-label="Ouvir áudio antes de enviar" controls src={preview}/>}<p><a className="btn btn-secondary" href={preview} download={file.name}>Descarregar áudio</a></p></div>}
   <label htmlFor="audio-language">Idioma falado</label><select id="audio-language" value={language} disabled={busy} onChange={e=>setLanguage(e.target.value)}><option value="auto">Detectar automaticamente</option><option value="pt">Português</option><option value="en">Inglês</option><option value="es">Espanhol</option><option value="fr">Francês</option></select>
   <button className="btn btn-primary" disabled={!status.enabled||!file||!consent||busy||recording||starting} onClick={()=>void transcribe()}>{busy?'A transcrever…':'Transcrever'}</button> <button className="btn btn-secondary" disabled={busy||starting} onClick={clear}>Apagar áudio e texto desta página</button>
+  {busy&&<div className="card" aria-busy="true">
+   <p role="status">{waiting<45?'Pedido iniciado — a enviar áudio e aguardar a transcrição.':'Ainda sem resposta — o envio ou processamento está a demorar.'}</p>
+   <progress aria-label="A aguardar a transcrição"/>
+   <p>Tempo decorrido: {Math.floor(waiting/60)}:{String(waiting%60).padStart(2,'0')}. Não é uma estimativa do tempo restante.</p>
+   <p>Mantenha esta página aberta. O serviço não comunica uma percentagem de progresso. A espera termina ao fim de 2 minutos e 30 segundos, sem repetir o pedido automaticamente.</p>
+   <button className="btn btn-secondary" onClick={()=>request.current?.abort()}>Parar de aguardar</button>
+   <p>Parar a espera não garante o cancelamento do processamento nem de eventuais custos.</p>
+  </div>}
+  {!busy&&!text&&!error&&<p role="status">{!status.enabled?status.message:recording?'Pare a gravação antes de transcrever.':starting?'Responda ao pedido de acesso ao microfone.':!file?'Carregue um áudio ou faça uma gravação.':!consent?'Confirme a autorização acima para poder transcrever.':'Áudio pronto. Clique em Transcrever para o enviar.'}</p>}
+  {text&&!busy&&<p role="status">Transcrição concluída. O texto está disponível abaixo para revisão e exportação.</p>}
   {error&&<p role="alert">{error}</p>}
   {text&&<section><h2>Transcrição para revisão</h2><p>Pode conter omissões ou palavras incorrectas. Confira nomes, números e termos jurídicos no áudio. Sem identificação garantida de intervenientes ou marcações temporais.</p><label htmlFor="transcript-text">Texto editável</label><textarea id="transcript-text" rows={14} maxLength={60000} value={text} onChange={e=>setText(e.target.value)}/><button className="btn btn-secondary" onClick={()=>downloadReport('LIC — Transcrição não certificada; revisão humana necessária.\n\n'+text,'transcricao-lic.txt')}>Exportar texto (.txt)</button><p>Para preparar uma acta ou extrair tarefas, copie o texto revisto e cole-o em <Link href="/services/meeting">Reuniões e entrevistas</Link>. Não é enviado automaticamente.</p></section>}
  </section>;
