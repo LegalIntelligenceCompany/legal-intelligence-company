@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import ts from "typescript";
+import {pilotModule} from './pilot-helper.mjs';
 import * as research from "../lib/legal-research.ts";
 function load(path, deps, env = {}) {
   const source = ts.transpileModule(readFileSync(new URL(path, import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
@@ -81,15 +82,23 @@ function setup(options = {}) {
   const client = { auth: { getUser: async () => ({ data: { user: options.unauthorized ? null : { id } } }) },
     from() { const q = { select() { return q; }, eq(k, v) { calls.filters.push([k, v]); return q; }, maybeSingle: async () => ({ data: options.denied ? null : { storage_path: "scoped-file", byte_size: options.size ?? pdf.size, status: "uploaded", mime_type: "application/pdf" } }) }; return q; },
     storage: { from: () => ({ download: async path => { calls.downloads.push(path); return { data: pdf }; } }) } };
-  const admin = { rpc: async (name, args) => { calls.rpc.push([name, args]); return { error: name === "assistant_begin" ? options.claimError : null }; } };
+  const admin = { rpc: async (name, args) => { calls.rpc.push([name, args]); return { data: true, error: name === 'ai_pilot_reserve' ? options.budgetError : name === "assistant_begin" ? options.claimError : null }; } };
   class OpenAI { async post(_path, params) { calls.provider.push(params.body); if (options.providerError || (options.reviewError && calls.provider.length === 2)) throw new Error("SECRET PROVIDER CONTENT"); return (calls.provider.length === 2 ? options.reviewOutput : options.output) ?? output; } }
-  const route = load("../app/api/assistant/route.ts", { "@/lib/billing-access": { paidAIAccessError: () => options.billingBlocked ? "BILLING_TEST_ONLY" : "" }, "next/server": { NextResponse: { json: (data, init) => Response.json(data, init) } }, openai: OpenAI, "@/lib/assistant": assistant, "@/lib/supabase/server": { createClient: async () => client }, "@/lib/supabase/admin": { createAdminClient: () => admin } }, options.env);
+  const route = load("../app/api/assistant/route.ts", { '@/lib/ai-pilot':pilotModule(options.pilot), "@/lib/billing-access": { paidAIAccessError: () => options.billingBlocked ? "BILLING_TEST_ONLY" : "" }, "next/server": { NextResponse: { json: (data, init) => Response.json(data, init) } }, openai: OpenAI, "@/lib/assistant": assistant, "@/lib/supabase/server": { createClient: async () => client }, "@/lib/supabase/admin": { createAdminClient: () => admin } }, options.env);
   return { calls, post: (body = base, origin = "https://lic.test") => route.POST(new Request("https://lic.test/api/assistant", { method: "POST", headers: { origin, "Content-Type": "application/json" }, body: JSON.stringify(body) })) };
 }
 test("route rejects cross-origin, unauthenticated and malformed requests before paid calls", async () => {
   let s = setup(); assert.equal((await s.post(base, "https://evil.test")).status, 403); assert.equal(s.calls.provider.length, 0);
   s = setup({ unauthorized: true }); assert.equal((await s.post()).status, 401); assert.equal(s.calls.rpc.length, 0);
   s = setup(); assert.equal((await s.post({ ...base, question: "x".repeat(150000) })).status, 400); assert.equal(s.calls.provider.length, 0);
+});
+test('pilot reserves once before two bounded economical passes and fails closed',async()=>{
+ const s=setup({pilot:true});assert.equal((await s.post()).status,200);
+ assert.equal(s.calls.rpc.filter(([name])=>name==='ai_pilot_reserve').length,1);
+ for(const body of s.calls.provider){assert.equal(body.model,'gpt-5-mini');assert.equal(body.max_tool_calls,2);assert.equal(body.max_output_tokens,12000);assert.equal(body.service_tier,'default');}
+ for(const message of ['PILOT_EXHAUSTED','PILOT_DUPLICATE','PILOT_FORBIDDEN','missing migration']){
+  const blocked=setup({pilot:true,budgetError:{message}});assert.ok((await blocked.post()).status>=400);assert.equal(blocked.calls.provider.length,0);
+ }
 });
 test("durable quota and duplicate rejections prevent provider requests", async () => {
   for (const message of ["RATE_LIMITED", "BUSY", "DUPLICATE", "schema missing"]) { const s = setup({ claimError: { message } }); const response = await s.post(); assert.ok(response.status >= 400); assert.equal(s.calls.provider.length, 0); }

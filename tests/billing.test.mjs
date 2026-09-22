@@ -2,10 +2,19 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import ts from "typescript";
+import {pilotModule} from './pilot-helper.mjs';
 
 const env = { STRIPE_SECRET_KEY: "sk_test_fake", STRIPE_PRICE_ID: "price_test", BILLING_TEST_EMAIL: "tester@example.com" };
 const price = { livemode: false, active: true, currency: "eur", unit_amount: 1000, billing_scheme: "per_unit", recurring: { interval: "month", interval_count: 1 } };
 const session = { livemode: false, mode: "subscription", client_reference_id: "user1", status: "complete", payment_status: "paid", subscription: { status: "active", livemode: false } };
+test('paid access requires explicitly enabled pilot and confirmed owner, never sandbox subscription',()=>{
+ const enabled=load('../lib/billing-access.ts',{'./ai-pilot':{...pilotModule(true),PILOT_EXPIRES:'2099-01-01'}});
+ for(const user of [null,{}, {email:'legalintelligencecompany@gmail.com'},{email:'other@example.com',email_confirmed_at:'yes'}])assert.equal(enabled.paidAIAccessError(user),'BILLING_TEST_ONLY');
+ const owner={email:'legalintelligencecompany@gmail.com',email_confirmed_at:'yes'};
+ assert.equal(enabled.paidAIAccessError(owner),'');
+ assert.equal(load('../lib/billing-access.ts',{'./ai-pilot':pilotModule(false)}).paidAIAccessError(owner),'BILLING_TEST_ONLY');
+ assert.equal(load('../lib/billing-access.ts',{'./ai-pilot':{...pilotModule(true),PILOT_EXPIRES:'2000-01-01'}}).paidAIAccessError(owner),'PILOT_EXPIRED');
+});
 function load(path, deps = {}, vars = env, fetcher = () => { throw new Error("Unexpected network"); }) {
   const source = ts.transpileModule(readFileSync(new URL(path, import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const exports = {};
@@ -146,5 +155,5 @@ test("subscription policy blocks unsupported prices, unpaid invoices, pauses and
   assert.equal(b.testEntitlement([{ ...snapshot, period_end: new Date(0).toISOString() }]).eligible, false);
   assert.throws(() => b.subscriptionSnapshot({ ...raw, livemode: true }, "cus_test", "price_test"));
   assert.throws(() => b.subscriptionSnapshot(raw, "cus_wrong", "price_test"));
-  assert.equal(load("../lib/billing-access.ts").paidAIAccessError(), "BILLING_TEST_ONLY");
+  assert.equal(load("../lib/billing-access.ts",{'./ai-pilot':pilotModule()}).paidAIAccessError(), "BILLING_TEST_ONLY");
 });

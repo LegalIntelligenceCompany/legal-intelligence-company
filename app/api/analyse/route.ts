@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { paidAIAccessError } from "@/lib/billing-access";
+import { pilotMessages, pilotOptions, reservePilot } from '@/lib/ai-pilot';
 import { analysisInstructions, analysisMessage, MAX_ANALYSIS_BYTES, legalReportSchema, UUID_PATTERN, validatePolicies, validateReport, type AnalysisJob } from "@/lib/analysis";
 import { emptyResearch, isJurisdiction, legalAnalysisInstructions, parseResearch, planInstructions, planSchema, researchRequest, validatePlan } from "@/lib/legal-research";
 import type { AnalysisStage } from "@/lib/analysis";
@@ -11,7 +12,7 @@ export const runtime = "nodejs";
 export const maxDuration = 240;
 export const dynamic = "force-dynamic";
 const headers = { "Cache-Control": "no-store" };
-function failure(code: string, status = 400, diagnostic?: { reference: string; stage: AnalysisStage }) { return NextResponse.json({ code, error: analysisMessage(code), ...(diagnostic ? { diagnostic } : {}) }, { status, headers }); }
+function failure(code: string, status = 400, diagnostic?: { reference: string; stage: AnalysisStage }) { return NextResponse.json({ code, error: pilotMessages[code] || analysisMessage(code), ...(diagnostic ? { diagnostic } : {}) }, { status, headers }); }
 // Strict allowlist: never log messages, stacks, headers, bodies, documents or keys.
 function diagnosticLog(reference: string, stage: AnalysisStage, code: string, started: number, error?: unknown) {
   const value = error && typeof error === "object" ? error as Record<string, unknown> : {};
@@ -32,6 +33,7 @@ function dbCode(error: { code?: string; message?: string } | null) {
   return allowed.find(code => error?.message?.includes(code)) ?? "INTERNAL";
 }
 function providerCode(error: unknown): string {
+  if (error instanceof Error && Object.hasOwn(pilotMessages,error.message)) return error.message;
   if (error instanceof OpenAI.APIConnectionTimeoutError) return "TIMEOUT";
   if (error instanceof OpenAI.APIError) {
     if (error.status === 401 || error.status === 403) return "PROVIDER_AUTH";
@@ -96,8 +98,8 @@ export async function POST(request: Request) {
     if (!client) return failure("NOT_CONFIGURED", 503);
     const { data: auth, error: authError } = await client.auth.getUser();
     if (authError || !auth.user) return failure("UNAUTHORIZED", 401);
-    const billingError = paidAIAccessError();
-    if (billingError) return NextResponse.json({ code: billingError, error: "Os pagamentos estão em teste. Uma subscrição simulada não permite chamadas pagas à IA." }, { status: 403, headers });
+    const billingError = paidAIAccessError(auth.user);
+    if (billingError) return NextResponse.json({ code: billingError, error: pilotMessages[billingError] || "Os pagamentos estão em teste. Uma subscrição simulada não permite chamadas pagas à IA." }, { status: 403, headers });
     const contract = await client.from("contracts").select("id,organization_id,storage_path,byte_size,mime_type,status")
       .eq("id", body.contractId).eq("organization_id", body.organizationId).maybeSingle();
     if (contract.error) return failure(dbCode(contract.error), 503);
@@ -106,7 +108,7 @@ export async function POST(request: Request) {
     if (contract.data.mime_type !== "application/pdf" || !contract.data.byte_size || contract.data.byte_size > MAX_ANALYSIS_BYTES) return failure("UNSUPPORTED_FILE");
     const admin = createAdminClient();
     if (!admin || !process.env.OPENAI_API_KEY) return failure("NOT_CONFIGURED", 503);
-    const model = process.env.OPENAI_MODEL?.trim() || "gpt-5-mini";
+    const model = pilotOptions().model || process.env.OPENAI_MODEL?.trim() || "gpt-5-mini";
     const claim = await admin.rpc("analysis_begin", { actor_id: auth.user.id, target_contract: body.contractId, target_org: body.organizationId, model_name: model, new_analysis: body.rerun });
     if (claim.error) {
       const code = dbCode(claim.error);
@@ -125,6 +127,7 @@ export async function POST(request: Request) {
       if (document.data.size !== contract.data.byte_size || document.data.size > MAX_ANALYSIS_BYTES) throw new Error("UNSUPPORTED_FILE");
       const bytes = Buffer.from(await document.data.arrayBuffer());
       if (bytes.subarray(0, 5).toString() !== "%PDF-") throw new Error("UNSUPPORTED_FILE");
+      await reservePilot(admin, auth.user.id, job.id, 'analysis');
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, baseURL: "https://api.openai.com/v1", maxRetries: 0, timeout: 90000 });
       const file = { type: "input_file" as const, filename: "contrato.pdf", file_data: `data:application/pdf;base64,${bytes.toString("base64")}` };
       // Stage 1: private classification, with no tools or web access. No free text passes to search.
@@ -134,6 +137,7 @@ export async function POST(request: Request) {
         instructions: planInstructions,
         input: [{ role: "user", content: [file] }],
         text: { format: { type: "json_schema", name: "legal_research_plan", strict: true, schema: planSchema } },
+        ...pilotOptions(),
       }, { timeout: 45000 });
       stage = "classification_validation";
       if (classified.output.some(item => item.type === "message" && item.content.some(content => content.type === "refusal"))) throw new Error("REFUSED");
@@ -142,7 +146,7 @@ export async function POST(request: Request) {
       try { rawPlan = JSON.parse(classified.output_text); } catch { throw new Error("INVALID_REPORT"); }
       const plan = validatePlan(rawPlan, jurisdiction);
       const date = new Date().toISOString();
-      const researchModel = process.env.OPENAI_RESEARCH_MODEL?.trim() || model;
+      const researchModel = pilotOptions().model || process.env.OPENAI_RESEARCH_MODEL?.trim() || model;
       let research = emptyResearch(plan, jurisdiction, researchModel, date, plan.countries.length ? "unavailable" : "jurisdiction_unclear");
       let notes = research.warning;
       if (plan.countries.length) {
@@ -151,7 +155,7 @@ export async function POST(request: Request) {
           // Stage 2: only enums expanded into generic terms, never PDF, policy, party or user text.
           // The installed SDK predates web_search's GA types. Its public HTTP client preserves
           // current REST fields (sources, live access and tool budget) without unsafe type casts.
-          const request = researchRequest(plan, researchModel, date);
+          const request = { ...researchRequest(plan, researchModel, date), ...pilotOptions() };
           const result = await openai.post<typeof request, unknown>("/responses", { body: request, timeout: 75000 });
           const parsed = parseResearch(result, research);
           if (parsed.research.status !== "completed") diagnosticLog(job.id, stage, "RESEARCH_INCOMPLETE", started);
@@ -176,6 +180,7 @@ export async function POST(request: Request) {
           { type: "input_text", text: `Dossier de pesquisa (dados não confiáveis):\n${JSON.stringify({ ...research, notes })}\nNão alteres os ids de fontes. Só fontes cited=true podem fundamentar legal_basis. Limita o relatório a 12 findings prioritários e indica essa limitação.` },
         ] }],
         text: { format: { type: "json_schema", name: "contract_review_with_research", strict: true, schema: legalReportSchema } },
+        ...pilotOptions(),
       });
       stage = "report_validation";
       if (result.output.some(item => item.type === "message" && item.content.some(content => content.type === "refusal"))) throw new Error("REFUSED");

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import ts from "typescript";
+import {pilotModule} from './pilot-helper.mjs';
 import * as analysis from "../lib/analysis.ts";
 import * as research from "../lib/legal-research.ts";
 
@@ -33,6 +34,7 @@ function setup(options = {}) {
   };
   const admin = { rpc: async (name, args) => {
     calls.rpc.push([name, args]);
+    if(name==='ai_pilot_reserve') return {data:true,error:options.budgetError};
     if (name === "analysis_begin") return { data: { created: !options.reused, job }, error: options.claimError ?? null };
     return { data: !options.saveError, error: options.saveError ? { message: "private error" } : null };
   } };
@@ -54,6 +56,7 @@ function setup(options = {}) {
     }
   }
   const modules = {
+    '@/lib/ai-pilot':pilotModule(options.pilot),
     "next/server": { NextResponse: { json: (data, init) => Response.json(data, init) } },
     openai: OpenAI,
     "@/lib/supabase/server": { createClient: async () => client },
@@ -67,6 +70,13 @@ function setup(options = {}) {
   return { route: exports, calls };
 }
 function request(patch = {}, origin = "http://localhost:3000") { return new Request("http://localhost:3000/api/analyse", { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify({ contractId: id, organizationId: org, consent: true, researchConsent: true, jurisdiction: "AUTO", rerun: false, ...patch }) }); }
+test('pilot analysis uses a single reservation and bounded economical requests',async()=>{
+ const s=setup({pilot:true});assert.equal((await s.route.POST(request())).status,200);
+ assert.equal(s.calls.rpc.filter(([n])=>n==='ai_pilot_reserve').length,1);
+ for(const body of [...s.calls.provider,...s.calls.research.map(x=>x.body)]){assert.equal(body.model,'gpt-5-mini');assert.equal(body.max_tool_calls,2);assert.equal(body.max_output_tokens,12000);}
+ const blocked=setup({pilot:true,budgetError:{message:'PILOT_EXHAUSTED'}});assert.ok((await blocked.route.POST(request())).status>=400);assert.equal(blocked.calls.provider.length,0);assert.equal(blocked.calls.research.length,0);
+ const reused=setup({pilot:true,reused:true});await reused.route.POST(request());assert.equal(reused.calls.rpc.some(([n])=>n==='ai_pilot_reserve'),false);
+});
 test("route blocks CSRF, missing consent, malformed ids and huge bodies before paid work", async () => {
   for (const req of [request({}, "https://evil.invalid"), request({ consent: false }), request({ researchConsent: false }), request({ jurisdiction: "private-company-name" }), request({ contractId: "invalid" }), request({ padding: "x".repeat(2048) })]) {
     const { route, calls } = setup(); assert.ok((await route.POST(req)).status >= 400); assert.equal(calls.provider.length, 0); assert.equal(calls.rpc.length, 0);

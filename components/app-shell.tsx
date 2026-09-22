@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Icon } from "./icons";
 
 const items = [
+  ["/setup/pilot", "shield", "Orçamento de teste IA"],
   ["/transcription", "file", "Transcrição de áudio"],
   ["/services", "file", "Serviços jurídicos"],
   ["/clauses", "file", "Cláusulas"],
