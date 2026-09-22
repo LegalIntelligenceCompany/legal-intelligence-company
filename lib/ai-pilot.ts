@@ -3,7 +3,7 @@ import type { createAdminClient } from './supabase/admin';
 export const PILOT_EMAIL = 'legalintelligencecompany@gmail.com';
 export const PILOT_MODEL = 'gpt-5-mini';
 export const PILOT_EXPIRES = '2026-09-29T23:59:59Z';
-export const PILOT_RESERVES = { research: 150, document: 60, analysis: 130, transcription: 20 } as const;
+export const PILOT_RESERVES = { research: 150, 'research-advanced':450, document: 60, analysis: 130, transcription: 20 } as const;
 export type PilotKind = keyof typeof PILOT_RESERVES;
 export const pilotMessages: Record<string, string> = {
  PILOT_SETUP: 'Falta preparar o orçamento de teste em /setup/pilot. Não foi iniciada uma chamada paga.',

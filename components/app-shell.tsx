@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Icon } from "./icons";
+import {Brand} from './brand';
 
 const items = [
   ["/setup/pilot", "shield", "Orçamento de teste IA"],
@@ -20,7 +21,7 @@ const items = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   return <>
     <aside className="app-sidebar" style={{ width:244, position:"fixed", inset:"0 auto 0 0", background:"#112b4b", padding:"25px 14px", display:"flex", flexDirection:"column", zIndex:2 }}>
-      <Link href="/dashboard" style={{ color:"white", fontSize:18, fontWeight:800, lineHeight:1.1, padding:"0 12px 30px" }}>Legal Intelligence<br/>Company<span style={{color:"#63a4ff"}}>.</span></Link>
+      <Link href="/dashboard" className="sidebar-brand" aria-label="Legal Intelligence Company — painel"><Brand compact/></Link>
       <nav aria-label="Menu principal" style={{overflowY:'auto',minHeight:0}}>{items.map(([href, icon, label]) => <Link key={href} className="side-link" href={href}><Icon name={icon}/>{label}</Link>)}</nav>
       <div style={{ marginTop:"auto", borderTop:"1px solid #ffffff1c", paddingTop:14 }}>
         <Link href="/settings" className="side-link"><Icon name="settings"/>Definições</Link>

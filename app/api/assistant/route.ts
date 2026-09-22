@@ -132,7 +132,8 @@ async function handle(request: Request, progress: (stage:string)=>void = ()=>{})
   } catch (error) {
     const detail=error as {name?:string;status?:number};
     const status=typeof detail?.status==='number'?detail.status:undefined;
-    const code = error instanceof Error && (["DOCUMENT", "NO_SOURCES", "INCOMPLETE", "REFUSED", "TIMEOUT"].includes(error.message) || Object.hasOwn(pilotMessages,error.message)) ? error.message : detail?.name==='APIConnectionTimeoutError' || detail?.name==='AbortError' ? 'TIMEOUT' : status===429 ? 'PROVIDER_LIMIT' : status && [400,401,403,404].includes(status) ? 'PROVIDER_CONFIG' : "PROVIDER";
+    const timedOut=(typeof OpenAI.APIConnectionTimeoutError==='function'&&error instanceof OpenAI.APIConnectionTimeoutError)||detail?.name==='APIConnectionTimeoutError'||detail?.name==='AbortError';
+    const code = error instanceof Error && (["DOCUMENT", "NO_SOURCES", "INCOMPLETE", "REFUSED", "TIMEOUT"].includes(error.message) || Object.hasOwn(pilotMessages,error.message)) ? error.message : timedOut ? 'TIMEOUT' : status===429 ? 'PROVIDER_LIMIT' : status && [400,401,403,404].includes(status) ? 'PROVIDER_CONFIG' : "PROVIDER";
     if (reserved) {
       try { await admin.rpc("assistant_finish", { p_id: input.requestId, p_actor: auth.user.id, p_success: false }); }
       catch { /* The lease expires even if the database is unavailable. */ }

@@ -19,6 +19,13 @@ try {
  await reserve(owner,randomUUID(),'transcription');await reserve(owner,randomUUID(),'transcription');await assert.rejects(reserve(owner,randomUUID(),'transcription'),/PILOT_EXHAUSTED/);
  assert.equal((await db.query('select reserved_cents from ai_pilot_budget')).rows[0].reserved_cents,490);
  await db.exec('reset role');await db.exec(sql);assert.equal((await db.query('select reserved_cents from ai_pilot_budget')).rows[0].reserved_cents,490);
+ const upgrade=readFileSync(new URL('../supabase/migrations/011_pilot_total_10.sql',import.meta.url),'utf8');await db.exec(upgrade);await db.exec(upgrade);
+ assert.equal((await db.query('select reserved_cents,limit_cents from ai_pilot_budget')).rows[0].reserved_cents,490);
+ assert.equal((await db.query('select limit_cents from ai_pilot_budget')).rows[0].limit_cents,1000);
+ const advanced=await Promise.allSettled([reserve(owner,randomUUID(),'research-advanced'),reserve(owner,randomUUID(),'research-advanced')]);assert.equal(advanced.filter(r=>r.status==='fulfilled').length,1);
+ await reserve(owner,randomUUID(),'document');assert.equal((await db.query('select reserved_cents from ai_pilot_budget')).rows[0].reserved_cents,1000);
+ await assert.rejects(reserve(owner,randomUUID(),'transcription'),/PILOT_EXHAUSTED/);
+ await db.exec(upgrade);assert.equal((await db.query('select reserved_cents from ai_pilot_budget')).rows[0].reserved_cents,1000);
  await db.exec("update ai_pilot_budget set expires_at='2000-01-01'");await assert.rejects(reserve(owner,randomUUID(),'transcription'),/PILOT_EXPIRED/);
  console.log('Pilot SQL: permissions, owner, duplicates, concurrent cap, no reset and expiry passed');
 }finally{await db.close();}

@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import ts from 'typescript';
+import {readFileSync} from 'node:fs';
+const src=ts.transpileModule(readFileSync(new URL('../lib/research-models.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+const mod={exports:{}};new Function('require','module','exports',src)(()=>({parseAssistantResponse:r=>{if(r.status!=='completed')throw Error('INCOMPLETE');return {text:r.text};}}),mod,mod.exports);
+const {advancedReviewBody,advancedReviewResult,allowedResearchModel}=mod.exports;
+const draft={text:'Material pesquisado',citations:[{url:'https://diariodarepublica.pt/a',title:'Fonte oficial',start:0,end:5}],researched:true};
+test('advanced review bounds inputs and output and cannot expand cost using tools',()=>{const body=advancedReviewBody({question:'Pergunta',profile:'Geral',country:'Portugal'},draft);assert.equal(body.model,'gpt-6-astra');assert.equal(body.tools,undefined);assert.equal(body.max_output_tokens,12000);assert.equal(body.background,true);assert.equal(body.store,false);assert.equal(body.text.format.strict,true);assert.throws(()=>advancedReviewBody({question:'a'.repeat(100000)},draft));assert.equal(allowedResearchModel('unknown'),false);});
+test('advanced review only renders original source IDs and declares review limits',()=>{const raw={status:'completed',text:JSON.stringify({blocks:[{heading:'Fundamento',text:'Explicação',sourceIds:[1]}]})};const result=advancedReviewResult(raw,draft);assert.equal(result.citations[0].url,draft.citations[0].url);assert.equal(result.text.slice(result.citations[0].start,result.citations[0].end),'[1]');assert.match(result.text,/sem voltar a consultar/);for(const sourceIds of [[2],[],['1']])assert.throws(()=>advancedReviewResult({...raw,text:JSON.stringify({blocks:[{heading:'A',text:'B',sourceIds}]})},draft));assert.throws(()=>advancedReviewResult({...raw,text:'not json'},draft));assert.throws(()=>advancedReviewResult({...raw,status:'incomplete'},draft));});

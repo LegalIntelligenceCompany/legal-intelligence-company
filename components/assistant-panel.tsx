@@ -12,7 +12,7 @@ export function downloadReport(text: string, name: string, type = "text/plain;ch
   const a = document.createElement("a"); a.href = url; a.download = name; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-function Answer({ result }: { result: AssistantResult }) {
+export function Answer({ result }: { result: AssistantResult }) {
   const parts: React.ReactNode[] = []; let last = 0;
   result.citations.forEach((c, i) => { parts.push(result.text.slice(last, c.start)); parts.push(<a className="source-link" key={i} href={c.url} target="_blank" rel="noopener noreferrer">[{i + 1}: {c.title}]</a>); last = c.end; });
   parts.push(result.text.slice(last));
