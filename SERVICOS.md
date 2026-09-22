@@ -1,5 +1,13 @@
 # Serviços jurídicos — implementação e activação
 
+## Transcrição de áudio
+
+`/transcription` disponibiliza carregamento (MP3/MPEG/MPGA, M4A/MP4, WAV, WebM) e gravação pelo microfone com permissão explícita. Limite de envio binário: 3 MB, verificado no cliente e durante a leitura no servidor. Gravação directa limitada a cinco minutos e ao mesmo limite de bytes; ficheiros submetidos são limitados por bytes, não duração. Não inclui gravações longas em partes, transcrição em tempo real, identificação de oradores ou legendas temporizadas.
+
+O áudio pode ser ouvido, descarregado e apagado localmente antes de enviar. O texto é editável e exportável em TXT. Não há armazenamento automático de áudio/transcrição. Saída de página ou troca de conta interrompe gravação e descarta estado. Rever contra o áudio: não é uma transcrição certificada nem uma garantia de fidelidade.
+
+A rota `/api/transcription` autentica a conta, verifica origem, consentimento e bloqueio de pagamentos, valida assinatura do contentor e partilha a reserva/limites `assistant_begin` e `assistant_finish`. Usa `gpt-4o-mini-transcribe`, sem repetição automática e sem pesquisas web. O bloqueio de IA paga mantém-se; não é preciso novo SQL se a migração do assistente já estiver operacional. Os testes usam um fornecedor simulado, sem chamadas reais. Antes de activar comercialmente, validar qualidade, quotas por duração/custo e permissões de produção. A opção de gravação depende do navegador e de HTTPS/localhost.
+
 ## Explicador e revisor crítico
 
 `/services/explainer` explica um PDF privado (até 10 MB) em linguagem simples, cláusula a cláusula ou como glossário. Exige organização e documento autorizado, usa só o ficheiro e pede excertos/páginas, preservação de condições e indicação de ambiguidades. Não valida legislação externa nem a segurança de assinatura.

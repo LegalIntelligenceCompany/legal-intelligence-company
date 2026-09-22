@@ -3,6 +3,7 @@ import { MarketingNav } from "@/components/marketing-nav";
 import { Icon } from "@/components/icons";
 
 const services = [
+  ["Transcrição de áudio", "Grave no navegador ou carregue áudio, reveja e exporte o texto. Transcrição paga ainda desactivada.", "/transcription", "Abrir transcrição"],
   ["Explicador de documentos", "Compreenda um PDF em linguagem simples, com excertos e páginas para conferir no original.", "/services/explainer", "Compreender um documento"],
   ["Revisor crítico", "Examine fragilidades, pressupostos e contra-argumentos, distinguindo suporte de pontos por confirmar.", "/services/reviewer", "Rever argumentos"],
   ["Todos os serviços", "Verificação de referências, comparação de jurisprudência, estudo, aulas, minutas e cronologias. IA paga desactivada nesta fase.", "/services", "Explorar serviços"],
