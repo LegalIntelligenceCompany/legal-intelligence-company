@@ -7,6 +7,18 @@ function load(file, deps={}) {
  const exports={};new Function('require','exports',source)(name=>{if(!(name in deps))throw Error(name);return deps[name];},exports);return exports;
 }
 const catalogue=load('../lib/commercial-plans.ts');
+test('access subscriptions include zero AI credits and do not enable commercial inference',()=>{
+ assert.deepEqual(catalogue.commercialConsumptionPolicy,{
+  subscriptionPurpose:'platform_access',includedAICredits:0,consumptionPayment:'prepaid_separately',
+  providerCostMultiplier:3,allowNegativeBalance:false,automaticTopUp:false,commercialInferenceEnabled:false,
+ });
+});
+test('AI consumption uses approved 3x cost, rounded up once to EUR cents excluding tax',()=>{
+ assert.deepEqual(catalogue.quoteAIConsumption(1000000),{providerCostEuroMicros:1000000,customerBaseCents:300,currency:'eur',taxIncluded:false});
+ for(const [cost,cents] of [[0,0],[1,1],[3333,1],[3334,2],[10000,3],[10001,4],[2500000,750]])assert.equal(catalogue.quoteAIConsumption(cost).customerBaseCents,cents);
+ for(const cost of [-1,NaN,Infinity,0.5,'100',null,undefined,Number.MAX_SAFE_INTEGER+1])assert.throws(()=>catalogue.quoteAIConsumption(cost),/INVALID_PROVIDER_COST/);
+ assert.equal(catalogue.quoteAIConsumption(Number.MAX_SAFE_INTEGER).customerBaseCents,Number((BigInt(Number.MAX_SAFE_INTEGER)*3n+9999n)/10000n));
+});
 function price(plan,patch={}) {return {id:`price_${plan.id}`,livemode:false,active:true,currency:'eur',unit_amount:plan.monthlyCents,billing_scheme:'per_unit',tax_behavior:'exclusive',lookup_key:plan.lookupKey,recurring:{interval:'month',interval_count:1,usage_type:'licensed'},metadata:{lic_plan:plan.id,lic_seats:String(plan.seats),lic_scope:plan.scope},...patch};}
 test('approved plans are monthly base prices; company is 99 total for three seats',()=>{
  assert.deepEqual(catalogue.commercialPlans.map(p=>[p.id,p.monthlyCents,p.seats]),[['individual',4900,1],['business',9900,3]]);
@@ -37,6 +49,7 @@ const request=(origin='https://lic.test')=>new Request('https://lic.test/api/bil
 test('GET is read-only; repeated provisioning returns same prices without creating subscriptions',async()=>{
  const {r,calls}=route();assert.equal((await r.GET()).status,200);assert.equal(calls.filter(c=>c.body).length,0);
  const first=await (await r.POST(request())).json();assert.equal(first.commercialCheckoutEnabled,false);assert.equal(first.plans.length,2);
+ assert.deepEqual(first.consumptionPolicy,catalogue.commercialConsumptionPolicy);
  const again=await (await r.POST(request())).json();assert.deepEqual(again,first);assert.equal(calls.filter(c=>c.body).length,2);
  assert.ok(calls.every(c=>c.path.startsWith('prices')));
 });

@@ -31,13 +31,27 @@ Pedidos e respostas locais ficam acessíveis por 24 horas, apenas ao dono atrav�
 
 ## Bloqueios para lançamento comercial
 
+### Carteira automática em sandbox — actualização 012
+
+- `/setup/credits` permite à conta de configuração abrir carteiras Individual/Empresas, subscrever os preços aprovados em TESTE, comprar saldo avulso (montante livre de 1 a 500 EUR por operação de teste), consultar movimentos e gerir/cancelar a subscrição no portal Stripe. Não activa cobranças reais.
+- `/api/credits/webhook` valida assinatura própria (`STRIPE_CREDITS_WEBHOOK_SECRET`) e rejeita eventos live. Reconsulta a Stripe; só credita sessões completas, pagas, em EUR, com titular, encomenda e montante exactos. O retorno do Checkout também reconcilia. SQL transaccional impede duplicação entre retorno, reentregas e concorrência. Não é preciso carregar em Actualizar estado: a página consulta a cada 15 segundos enquanto visível.
+- SQL 012 mantém carteiras TESTE separadas do piloto e dos consumidores reais. Renovação de acesso atribui ZERO créditos. Três lugares por empresa são atribuídos pelo titular entre membros confirmados; remoção da organização bloqueia novas reservas imediatamente. Reservas bloqueiam saldo antes do consumo, acertam 3× custo agregado e libertam apenas a diferença conhecida. Não há libertação automática por timeout incerto.
+- Reembolsos/disputas congelam a carteira; não existe desbloqueio automático por eventos pagos atrasados. Acertos financeiros/reembolsos reais exigem revisão, não uma falsa garantia de risco zero.
+- Simulação fixa de consumo: reserva 60 cêntimos e liquida 30 cêntimos por custo fictício de 100000 milionésimos de EUR. Não chama fornecedores. As rotas de IA existentes continuam exclusivamente no piloto autorizado: **esta carteira ainda não está ligada a inferência real**.
+- Antes de produção: integrar medição/limites de custo e câmbio dos fornecedores em TODOS os serviços, validar preços e dados fiscais para cobrar IVA correctamente, aceitar termos e política de créditos, configurar Stripe live e avaliar segurança/privacidade. Não basta mudar uma variável ou trocar chaves. Não se declara o pedido de lançamento comercial concluído.
+- Configuração única: aplicar 012 no Supabase, criar os preços em `/setup/plans`, registar destino `/api/credits/webhook` com eventos listados em `/setup/credits/install`, guardar o segredo próprio na Vercel e publicar. Não executar 012 de novo para repor saldos: a repetição preserva dados.
+- Testes: `tests/sql-prepaid.mjs` valida migração repetida, três lugares, isolamento, permissões, créditos duplicados, reservas concorrentes, acerto idempotente, cancelamento e congelamento. `tests/prepaid.test.mjs` valida pagamentos, assinatura, autenticação, limites e falhas. Estes testes locais não substituem um Checkout sandbox real e as respectivas notificações no deployment.
+
 ### Catálogo aprovado em 22/09/2026
 
 - LIC Individual: 49 EUR/mês, preço base, 1 utilizador.
 - LIC Empresas: 99 EUR/mês por empresa, preço base, 3 utilizadores com créditos partilhados (não 99 EUR por lugar).
 - IVA acresce quando aplicável. `tax_behavior=exclusive` não configura registos fiscais nem activa cálculo/cobrança automática de impostos.
 - `/setup/plans` está restrito à conta de configuração confirmada; permite consultar/criar os dois preços na Stripe TESTE por lookup keys versionadas. Repetições reutilizam os preços; conflitos de montante, moeda, imposto, lugares ou periodicidade bloqueiam a operação. O plano antigo não é alterado.
-- Não há checkout comercial nem atribuição de saldo nesta fase. Quantidade/validade dos créditos e carregamentos continuam por definir e implementar. Metadados de três lugares não substituem controlo de membros nem uma carteira partilhada atómica.
+- Modelo aprovado: as mensalidades são apenas acesso à plataforma, com zero créditos de IA incluídos. Consumo adquirido separadamente e antecipadamente, sem saldo negativo nem carregamentos automáticos. Renovar a mensalidade não deve atribuir saldo de IA.
+- Multiplicador aprovado: 3× o custo dos fornecedores em EUR, antes de IVA. `quoteAIConsumption` recebe custo agregado em milionésimos de euro e arredonda o total do pedido por excesso ao cêntimo; não desconta saldo nem autoriza chamadas. Agregar modelos, revisão, pesquisa e outras ferramentas antes do arredondamento. Nunca tratar USD como EUR. Falta integrar tarifas versionadas, conversão cambial e contabilização real dos fornecedores; a margem não é lucro líquido garantido.
+- Não há checkout comercial nem saldo utilizável em IA nesta fase. A carteira e os carregamentos automáticos estão implementados em sandbox conforme a secção acima. A validade e as condições dos créditos comerciais continuam por definir.
+- Antes de activar consumo comercial: confirmar pagamentos no servidor, creditar cada pagamento uma única vez, reservar atomicamente o custo máximo antes de chamar fornecedores, ajustar ao consumo real, impedir concorrência acima do saldo e definir tratamento de falhas, reembolsos e disputas. A mensalidade isolada nunca autoriza inferência. Custos de fornecedores continuam a ser facturados à plataforma; pré-pagamento não elimina comissões, impostos, disputas ou risco operacional.
 - Após publicar, abrir `/setup/plans` e criar/confirmar os dois preços de teste. Não é necessária migração SQL nova: usa o bloqueio da migração 006 já instalada. Nenhuma operação desta página chama a IA.
 
 - Stripe continua em sandbox; não existem permissões de IA para clientes pagantes em produção. Não basta trocar chaves.

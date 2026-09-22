@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { billingConfig, isBillingTester, stripeTestRequest } from '@/lib/billing';
 import { withBillingLock } from '@/lib/billing-store';
-import { commercialPlans, testPlanPriceBody, validateTestPlanPrice, type CommercialPlan } from '@/lib/commercial-plans';
+import { commercialPlans, commercialConsumptionPolicy, testPlanPriceBody, validateTestPlanPrice, type CommercialPlan } from '@/lib/commercial-plans';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -36,7 +36,7 @@ export async function GET() {
   try {
     await owner();
     const plans = await Promise.all(commercialPlans.map(async plan => ({ ...plan, stripe: await findPrice(plan) })));
-    return NextResponse.json({ plans, testOnly: true, commercialCheckoutEnabled: false }, { headers });
+    return NextResponse.json({ plans, consumptionPolicy: commercialConsumptionPolicy, testOnly: true, commercialCheckoutEnabled: false }, { headers });
   } catch (error) { return failure(error); }
 }
 export async function POST(request: Request) {
@@ -54,6 +54,6 @@ export async function POST(request: Request) {
       }
       return results;
     });
-    return NextResponse.json({ plans, testOnly: true, commercialCheckoutEnabled: false }, { headers });
+    return NextResponse.json({ plans, consumptionPolicy: commercialConsumptionPolicy, testOnly: true, commercialCheckoutEnabled: false }, { headers });
   } catch (error) { return failure(error); }
 }

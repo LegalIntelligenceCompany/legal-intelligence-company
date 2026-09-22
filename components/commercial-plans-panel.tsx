@@ -1,6 +1,7 @@
 'use client';
 import { useRef, useState } from 'react';
-import { commercialPlans } from '@/lib/commercial-plans';
+import Link from 'next/link';
+import { commercialPlans, commercialConsumptionPolicy, quoteAIConsumption } from '@/lib/commercial-plans';
 export function CommercialPlansPanel() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('Planos definidos. Consulte o estado para verificar se já existem na Stripe de teste.');
@@ -24,11 +25,16 @@ export function CommercialPlansPanel() {
       <h2>{plan.name}</h2><p className="lic-plan-price">{plan.monthlyCents / 100} €<small> / mês</small></p>
       <p>Preço base. Acresce IVA quando aplicável.</p>
       <p>{plan.seats === 1 ? '1 utilizador, com saldo individual.' : '3 utilizadores incluídos, com um único saldo partilhado pela empresa. 99 € pela empresa, não por utilizador.'}</p>
-      <p>Créditos incluídos e carregamentos adicionais previstos. A quantidade, validade e tabela de consumo ainda não estão publicadas nem activas.</p>
+      <p><strong>Mensalidade de acesso à plataforma. Não inclui créditos de IA.</strong></p>
+      <p>O consumo de IA será pago separadamente, com créditos comprados antecipadamente. Sem saldo suficiente, novos pedidos serão bloqueados. Não haverá carregamentos automáticos.</p>
+      <p>A carteira pré-paga ainda não está activa. Os pacotes, a validade e a tabela de consumo estão por definir.</p>
       <p><strong>Pré-lançamento — subscrição indisponível.</strong></p>
       {prices[plan.id] && <p>Preço de teste confirmado: <code>{prices[plan.id]}</code></p>}
     </section>)}</div>
     <section className="card team-panel"><h2>Preparação segura dos planos</h2>
+      <p><Link className="btn btn-secondary" href="/setup/credits">Abrir carteira pré-paga de teste</Link></p>
+      <p>Regra de consumo aprovada: custo dos fornecedores de IA em euros × {commercialConsumptionPolicy.providerCostMultiplier}, antes de IVA. Exemplo: 1 € de custo corresponde a {(quoteAIConsumption(1000000).customerBaseCents / 100).toFixed(2).replace('.', ',')} € de consumo para o cliente, antes de IVA. Não é uma tarifa fixa por pergunta.</p>
+      <p>A diferença não é lucro líquido: ainda existem comissões e restantes despesas. Este cálculo está preparado, mas ainda não desconta saldo nem permite chamadas comerciais à IA.</p>
       <p>Cria apenas produtos e preços em modo de teste. Não altera o plano antigo, não cria subscrições, não activa impostos automáticos e não concede créditos ou acesso à IA.</p>
       <div className="workspace-toolbar"><button className="btn btn-primary" disabled={busy} onClick={() => run(true)}>Criar planos na Stripe de teste</button><button className="btn btn-secondary" disabled={busy} onClick={() => run(false)}>Consultar estado dos planos</button></div>
       <p role="status" aria-live="polite">{busy ? 'A confirmar os planos na Stripe…' : message}</p>
