@@ -11,6 +11,14 @@ const services = load("../lib/services.ts", {});
 const assistant = load("../lib/assistant.ts", { "./legal-research": research, "./services": services });
 const id = "10000000-0000-4000-8000-000000000001", org = "20000000-0000-4000-8000-000000000001", doc = "30000000-0000-4000-8000-000000000001";
 const base = { requestId: id, mode: "research", profile: "Estudante", country: "Portugal", question: "Explique um conceito", history: [], documentIds: [], consent: true };
+test('new private services preserve billing guards and never enable web tools',async()=>{
+ for(const workflow of ['evidence','dossier-search','negotiation','meeting']){
+ const input={...base,workflow,format:services.workflows[workflow].formats[0],mode:workflow==='meeting'?'private-text':workflow==='negotiation'?'document':'collection',...(workflow==='meeting'?{material:'Notas privadas: decidir depois.'}:{organizationId:org,documentIds:[doc]})};
+ const blocked=setup({billingBlocked:true});assert.equal((await blocked.post(input)).status,403);assert.equal(blocked.calls.provider.length,0);
+ const s=setup();assert.equal((await s.post(input)).status,200);assert.equal(s.calls.provider.length,2);for(const call of s.calls.provider){assert.equal(call.tools,undefined);assert.equal(call.store,false);}
+ if(workflow==='meeting'){assert.equal(s.calls.downloads.length,0);assert.match(JSON.stringify(s.calls.provider[0].input),/untrustedMaterial/);}else{assert.ok(s.calls.filters.some(([k,v])=>k==='organization_id'&&v===org));const denied=setup({denied:true});assert.equal((await denied.post(input)).status,403);assert.equal(denied.calls.provider.length,0);}
+ }
+});
 test('new services preserve payment guards and private PDF isolation',async()=>{
  for(const workflow of ['explainer','reviewer']){
   const input={...base,workflow,format:services.workflows[workflow].formats[0],mode:'document',organizationId:org,documentIds:[doc]};

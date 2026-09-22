@@ -54,6 +54,8 @@ button { font:inherit; cursor:pointer; }
 .workspace-row h3 { margin:0; font-size:17px; overflow-wrap:anywhere; }
 .workspace-row .workspace-toolbar { margin-top:16px; }
 .team-panel textarea { width:100%; resize:vertical; font:inherit; color:var(--ink); padding:12px; border:1px solid #cad4e0; border-radius:8px; margin:8px 0 18px; line-height:1.6; }
+.legal-versions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px; }
+@media(max-width:900px){.legal-versions{grid-template-columns:1fr}}
 .policy-text { white-space:pre-wrap; overflow-wrap:anywhere; }
 .upload-area { border:1.5px dashed #9bb9df; background:#f8fbff; border-radius:10px; padding:32px 20px; }
 .upload-area strong,.upload-area span { display:block; margin-bottom:12px; }

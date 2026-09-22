@@ -1,5 +1,17 @@
 # Serviços jurídicos — implementação e activação
 
+## Sete novos serviços
+
+- `/services/evidence`: mapa de factos alegados, excertos e lacunas a partir de 1–5 PDFs autorizados da mesma organização, até 10 MB combinados. Não decide admissibilidade ou autenticidade de prova.
+- `/services/dossier-search`: perguntas sobre o mesmo conjunto limitado de PDFs, com excertos e localização quando legível. Não pesquisa automaticamente toda a biblioteca nem cria um índice persistente.
+- `/services/negotiation`: contrato em PDF, objectivos e alternativas de cláusulas para revisão. Não contacta contrapartes nem certifica validade.
+- `/services/meeting`: notas/transcrição coladas (até 60 000 caracteres), guiões, perguntas, proposta de acta e tarefas. Não grava reuniões nem cria tarefas/calendários automaticamente. O serviço de transcrição existente pode fornecer o texto; a transferência é manual e explícita.
+- `/clauses`: biblioteca pessoal com pesquisa por título/contexto, versões separadas, declaração pessoal de aprovação e notas de utilização. Pode criar uma nova versão a partir de outra; a aprovação é sempre desmarcada no novo rascunho. Não é um arquivo imutável: o proprietário pode eliminar versões. Armazenamento reutiliza RLS e quotas da biblioteca, com a migração 008.
+- `/anonymize`: detecção local de e-mails, IBAN PT, números de nove dígitos e termos literais fornecidos pelo utilizador. Selecção humana das substituições e exportação TXT; não faz redação de PDF, OCR ou remoção de metadados. Não garante anonimato; nomes/moradas e outros dados podem não ser detectados.
+- `/legislation-compare`: comparação local linha a linha de dois textos, com fontes e datas declaradas pelo utilizador. Preserva linhas repetidas e distingue adições/remoções; não verifica as fontes, vigência ou efeitos jurídicos. Até 40 000 caracteres/600 linhas por versão.
+
+As quatro novas ferramentas de IA mantêm os bloqueios de execução e de pagamentos. Não usam pesquisa web com documentos/notas privados. Os testes de integração simulam o fornecedor: não demonstram qualidade factual de respostas reais. As ferramentas locais não enviam o texto ao servidor nem fazem chamadas pagas; a biblioteca guarda dados no Supabase.
+
 ## Transcrição de áudio
 
 `/transcription` disponibiliza carregamento (MP3/MPEG/MPGA, M4A/MP4, WAV, WebM) e gravação pelo microfone com permissão explícita. Limite de envio binário: 3 MB, verificado no cliente e durante a leitura no servidor. Gravação directa limitada a cinco minutos e ao mesmo limite de bytes; ficheiros submetidos são limitados por bytes, não duração. Não inclui gravações longas em partes, transcrição em tempo real, identificação de oradores ou legendas temporizadas.
@@ -22,7 +34,7 @@ O catálogo em `/services` inclui verificação assistida de referências, compa
 
 ## Activar o armazenamento
 
-Depois de publicar o código, abrir `/setup/services`, copiar o SQL e executá-lo no SQL Editor do projecto Supabase correspondente. Corresponde a `supabase/migrations/007_library.sql`. É repetível e independente das migrações de IA. Confirmar criação, leitura, exportação e eliminação com duas contas diferentes. Limites: 100 dossiers/temas e 1000 notas por utilizador.
+Depois de publicar o código, abrir `/setup/services`, usar “Copiar código SQL completo” e executá-lo no SQL Editor do projecto Supabase correspondente. Inclui `007_library.sql` e `008_clauses.sql`. Se 007 já foi executada, basta aplicar 008; executar ambas também conserva os registos. Confirmar criação, leitura, exportação e eliminação com duas contas diferentes. Limites partilhados: 100 dossiers/temas/cláusulas e 1000 notas/versões por utilizador.
 
 ## Custos e estado
 

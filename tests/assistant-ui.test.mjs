@@ -21,6 +21,10 @@ function render(states = {}, organizationId, workflow) {
   const exports = {}; new Function("require", "exports", source)(name => { if (!(name in deps)) throw new Error(name); return deps[name]; }, exports);
   return renderToStaticMarkup(React.createElement(exports.AssistantPanel, { organizationId, workflow }));
 }
+test('new document workbenches render multi-PDF choices and private meeting text',()=>{
+ for(const w of ['evidence','dossier-search']){const html=render({5:'ready'},'company',w);assert.match(html,/Escolha até cinco PDFs/);assert.doesNotMatch(html,/id="document-a"/);assert.doesNotMatch(html,/fornecedores de pesquisa/);}
+ const meeting=render({5:'ready'},undefined,'meeting');assert.match(meeting,/meeting-material/);assert.match(meeting,/notas\/transcrição/);assert.doesNotMatch(meeting,/fornecedores de pesquisa/);assert.match(meeting,/disabled="">Enviar pergunta/);
+});
 test('explainer and reviewer show formats, correct consent and PDF selection',()=>{
  const explainer=render({5:'ready'},'company','explainer');
  assert.match(explainer,/Cláusula a cláusula/);assert.match(explainer,/Glossário do documento/);assert.match(explainer,/Escolha um PDF/);assert.match(explainer,/Sem pesquisa web neste modo/);assert.doesNotMatch(explainer,/id="assistant-mode"/);assert.match(explainer,/disabled="">Enviar pergunta/);
