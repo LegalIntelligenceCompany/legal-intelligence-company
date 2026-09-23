@@ -1,0 +1,31 @@
+import Link from 'next/link';
+import {AppShell} from '@/components/app-shell';
+import {createClient} from '@/lib/supabase/server';
+import {createAdminClient} from '@/lib/supabase/admin';
+import {isBillingTester} from '@/lib/billing';
+import {meterConfiguration,meterServices} from '@/lib/commercial-meter';
+export const dynamic='force-dynamic';
+export const metadata={title:'Preparar lançamento | LIC',robots:{index:false,follow:false}};
+export default async function Launch(){
+ const client=await createClient();const user=(await client?.auth.getUser())?.data.user;
+ if(!user?.email_confirmed_at||!isBillingTester(user.email,(process.env.BILLING_TEST_EMAIL||'').trim().toLowerCase()))return <AppShell><h1>Configuração reservada</h1><Link href="/login?next=/setup/launch">Entrar</Link></AppShell>;
+ const admin=createAdminClient();
+ const schema=admin?await admin.from('ai_credit_orders').select('id',{head:true,count:'exact'}).limit(0):null;
+ const rates=meterServices.map(service=>{try{meterConfiguration(service);return {service,ready:true};}catch{return {service,ready:false};}});
+ const checks=[
+  ['Estrutura da carteira instalada',!!schema&&!schema.error],
+  ['Chave Stripe de produção configurada',process.env.STRIPE_SECRET_KEY?.startsWith('sk_live_')===true],
+  ['Preços live e segredo do destino de pagamentos configurados',!!process.env.STRIPE_LIVE_INDIVIDUAL_PRICE_ID&&!!process.env.STRIPE_LIVE_BUSINESS_PRICE_ID&&!!process.env.STRIPE_LIVE_CREDITS_WEBHOOK_SECRET],
+  ['Confirmação fiscal registada pelo titular',process.env.LIC_LIVE_TAX_READY==='true'],
+  ['URL e versão das condições configuradas',!!process.env.LIC_LIVE_TERMS_URL&&!!process.env.LIC_LIVE_TERMS_VERSION],
+  ['Tarifas e câmbio válidos para todos os serviços',rates.every(r=>r.ready)],
+ ] as const;
+ return <AppShell><div className="eyebrow">Reservado ao titular</div><h1>Preparar o lançamento</h1>
+  <section className="card team-panel"><h2>Estado técnico da configuração</h2><p>Esta lista verifica configuração, não aprovação jurídica, fiscal ou da Stripe. Não activa pagamentos nem chama modelos de IA.</p><ul>{checks.map(([label,ok])=><li key={label}>{ok?'✓ Configurado':'Pendente'} — {label}</li>)}</ul><p>Novas compras: {process.env.LIC_LIVE_CHECKOUT_ENABLED==='true'?'interruptor ligado; sujeito às restantes verificações':'desligadas'}. Consumo comercial: {process.env.AI_COMMERCIAL_ENABLED==='true'?'interruptor ligado; sujeito a saldo e verificações':'desligado'}.</p><p>Serviços sem tarifa validada: {rates.filter(r=>!r.ready).map(r=>r.service).join(', ')||'nenhum'}.</p><Link href="/setup/metering" className="btn btn-secondary">Preparar a carteira</Link></section>
+  <section className="card team-panel"><h2>1. Identificar quem vende</h2><p>Com um contabilista, escolha entre exercer em nome individual e constituir sociedade, e confirme actividade, CAE, início de actividade e regime fiscal. Não introduza dados fictícios. A declaração de início de actividade deve ser tratada antes de iniciar a actividade nos termos aplicáveis.</p><p><a href="https://justica.gov.pt/Guias/Como-criar-uma-empresa-online">Guia oficial para criar uma empresa</a> · <a href="https://info.portaldasfinancas.gov.pt/pt/apoio_ao_contribuinte/Cidadaos/Atividade_profissional/Declaracoes_de_atividade/Inicio_de_atividade/Paginas/default.aspx">Início de actividade — Autoridade Tributária</a></p></section>
+  <section className="card team-panel"><h2>2. Fechar IVA e facturação</h2><p>Entregue ao contabilista o modelo aprovado: Individual 49 €/mês; Empresas 99 €/mês, três utilizadores; IVA quando aplicável; consumo pré-pago separado, sem crédito incluído. Peça confirmação escrita de impostos para clientes particulares/empresas, vendas internacionais e carregamentos de saldo, e escolha a solução de facturação e comunicação à AT. Não presuma que um recibo Stripe resolve todas as obrigações portuguesas.</p><p>Só configure os registos fiscais na Stripe depois de confirmar o enquadramento. <a href="https://docs.stripe.com/tax/registering">Registos e configuração Stripe Tax</a>.</p></section>
+  <section className="card team-panel"><h2>3. Aprovar as condições e a privacidade</h2><p>Faltam os dados oficiais do vendedor e a aprovação dos textos. A revisão deve abranger: subscrição e cancelamento; validade e destino do saldo após cancelamento; reembolsos e direitos dos consumidores; reservas incertas; preço do consumo; suporte; limitações da IA; tratamento e retenção de documentos/áudio; fornecedores, direitos dos titulares e transferências de dados. Não publique uma promessa de ausência de erros ou de confidencialidade absoluta.</p><p>Não existe uma política de créditos aprovada por marcar esta lista. As decisões comerciais e a revisão legal têm de ser efectivas antes da venda.</p></section>
+  <section className="card team-panel"><h2>4. Activar a conta Stripe</h2><p>No painel Stripe, escolha a conta de produção e complete a verificação do negócio com os dados reais do titular, representantes e conta bancária. Documentos de identidade, dados bancários e aceitação de contratos são preenchidos por si directamente na Stripe; não os envie nesta conversa.</p><p><a href="https://docs.stripe.com/get-started/account/set-up">Guia oficial de activação</a>. Aguarde a confirmação e resolva os requisitos pendentes antes de aceitar pagamentos.</p></section>
+  <section className="card team-panel"><h2>5. Activação técnica final</h2><p>Depois das aprovações, configurar preços e notificações live, facturação, condições publicadas, tarifas e câmbio verificados. Fazer uma validação controlada do pagamento, saldo, reserva, consumo, cancelamento e recuperação antes de abrir ao público. Só depois ligar novas compras e consumo comercial.</p><p>O pré-pagamento não transfere a factura do fornecedor para o cliente: a plataforma paga o fornecedor. Comissões, impostos, disputas e reservas de tesouraria continuam a ser responsabilidade do negócio. Uma margem de 3× sobre o consumo não é uma garantia de lucro líquido.</p></section>
+ </AppShell>;
+}

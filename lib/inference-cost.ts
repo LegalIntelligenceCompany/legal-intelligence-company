@@ -4,12 +4,14 @@
 export type ResponseUsage = {
   responseId: string; model: string; tier: string;
   input: number; cachedInput: number; output: number; webSearchCalls: number;
+  audioInput?: number;
 };
 export type InferenceTariff = {
   id: string; model: string; tier: string; validFrom: string; validUntil: string;
   // Integer billionths of USD per token / tool call.
   inputNanoUsd: number; cachedInputNanoUsd: number;
   outputNanoUsd: number; webSearchNanoUsd: number;
+  audioInputNanoUsd?: number;
   // Refuse long-context schedules rather than silently applying short rates.
   maxInputTokens: number;
 };
@@ -83,10 +85,12 @@ export function responseCostNanoUsd(usage: ResponseUsage, tariff: InferenceTarif
   validAt(tariff, at);
   if (usage.model !== tariff.model || usage.tier !== tariff.tier) throw Error('TARIFF_MISMATCH');
   const input = integer(usage.input), cached = integer(usage.cachedInput);
+  const audio = integer(usage.audioInput ?? 0);
+  if (audio > input - cached) throw Error('USAGE_UNCONFIRMED');
   if (cached > input || input > positive(tariff.maxInputTokens)) throw Error('CONTEXT_PRICE_UNCONFIRMED');
   const inputRate = integer(tariff.inputNanoUsd), cachedRate = integer(tariff.cachedInputNanoUsd);
   if (cachedRate > inputRate) throw Error('TARIFF_MISMATCH');
-  return BigInt(input - cached) * BigInt(inputRate) + BigInt(cached) * BigInt(cachedRate) +
+  return BigInt(input - cached - audio) * BigInt(inputRate) + BigInt(audio) * BigInt(audio ? positive(tariff.audioInputNanoUsd!) : 0) + BigInt(cached) * BigInt(cachedRate) +
     BigInt(integer(usage.output)) * BigInt(integer(tariff.outputNanoUsd)) +
     BigInt(integer(usage.webSearchCalls)) * BigInt(integer(tariff.webSearchNanoUsd));
 }
@@ -118,9 +122,21 @@ export type StageBudget = {tariff: InferenceTariff; maxInput: number; maxOutput:
 // not a character estimate. Models/tools without such a bound stay blocked.
 export function quoteReservation(stages: StageBudget[], exchange: ExchangeSnapshot, at: number) {
   return quoteMeteredRequest(stages.map((stage, index) => ({
-    tariff: stage.tariff, startedAt: at,
+    tariff: stage.tariff.audioInputNanoUsd ? {...stage.tariff,inputNanoUsd:Math.max(stage.tariff.inputNanoUsd,stage.tariff.audioInputNanoUsd)} : stage.tariff, startedAt: at,
     usage: {responseId: `ceiling_${index}`, model: stage.tariff.model, tier: stage.tariff.tier,
       input: integer(stage.maxInput), cachedInput: 0, output: integer(stage.maxOutput),
       webSearchCalls: integer(stage.maxWebSearchCalls)},
   })), exchange, at);
+}
+
+// Audio JSON has no response/model identifier. Bind usage to the HTTP request-id
+// and the exact server-selected model; never manufacture a provider receipt ID.
+export function readTranscriptionUsage(raw: unknown, requestId: string, model: string): ResponseUsage {
+  const usage = object(object(raw).usage), detail = object(usage.input_token_details);
+  if (usage.type !== 'tokens' || !/^req_[A-Za-z0-9_-]+$/.test(requestId)) return invalid();
+  const input = integer(usage.input_tokens), audioInput = integer(detail.audio_tokens), text = integer(detail.text_tokens);
+  const output = integer(usage.output_tokens);
+  if (audioInput + text !== input || integer(usage.total_tokens) !== input + output) return invalid();
+  for (const [key,value] of Object.entries(detail)) if (!['audio_tokens','text_tokens'].includes(key) && value !== 0 && value !== null) return invalid();
+  return {responseId:requestId,model,tier:'default',input,audioInput,cachedInput:0,output,webSearchCalls:0};
 }

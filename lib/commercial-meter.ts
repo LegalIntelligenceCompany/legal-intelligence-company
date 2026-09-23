@@ -1,10 +1,12 @@
 import 'server-only';
 import type {createAdminClient} from './supabase/admin';
-import {quoteReservation, readResponseUsage, responseCostNanoUsd, type ExchangeSnapshot, type StageBudget} from './inference-cost';
+import {quoteReservation, readResponseUsage, readTranscriptionUsage, responseCostNanoUsd, type ResponseUsage, type ExchangeSnapshot, type StageBudget} from './inference-cost';
 import {readLivePeriod} from './live-subscription';
 
 type Admin = NonNullable<ReturnType<typeof createAdminClient>>;
-type MeterRequest = {id:string; actor_id:string; plan:StageBudget[]; exchange:ExchangeSnapshot; state:string; actual_cents:number|null; created_at:string};
+export type MeterRequest = {id:string; actor_id:string; plan:StageBudget[]; exchange:ExchangeSnapshot; state:string; actual_cents:number|null; created_at:string};
+export type MeterService = 'economical'|'advanced'|'document'|'assistant-research'|'analysis'|'transcription';
+export const meterServices: MeterService[] = ['economical','advanced','document','assistant-research','analysis','transcription'];
 export const meterMessages: Record<string,string> = {
  METER_SETUP:'A carteira comercial ainda não está configurada. Não foi iniciada uma chamada paga.',
  METER_FORBIDDEN:'Não tem acesso à carteira seleccionada.',
@@ -22,12 +24,13 @@ export function commercialMeterEnabled() {
 function checked(error:{message?:string}|null) {
  if (error) throw Error(Object.keys(meterMessages).find(code=>error.message?.includes(code)) || 'METER_UNCONFIRMED');
 }
-function configuration(advanced:boolean) {
+export function meterConfiguration(service:MeterService) {
  try {
   const config=JSON.parse(process.env.AI_COMMERCIAL_TARIFFS_JSON || '');
-  const plan=config[advanced?'advanced':'economical'] as StageBudget[];
+  const plan=config[service] as StageBudget[];
+  const advanced=service==='advanced';
   const exchange=config.exchange as ExchangeSnapshot;
-  if (!Array.isArray(plan)||plan.length!==2) throw Error();
+  if (!Array.isArray(plan)||plan.length!==(service==='analysis'?3:service==='transcription'?1:2)) throw Error();
   for(const stage of plan) {
    if(!stage || typeof stage.tariff?.model!=='string' || !/^gpt-[a-zA-Z0-9.-]+$/.test(stage.tariff.model) ||
       stage.tariff.tier!=='default' || stage.maxOutput<1 || stage.maxOutput>12000 ||
@@ -37,26 +40,41 @@ function configuration(advanced:boolean) {
   }
   // A tariff snapshot must explicitly attest the aggregate provider input bound.
   // Never infer a safe ceiling from a prompt's character count.
-  if(config.providerInputBoundsReviewed!==true || plan[0].maxWebSearchCalls!==2 ||
-     plan[1].maxWebSearchCalls!==(advanced?0:2)) throw Error();
-  if(!/^gpt-5-mini(?:-\d{4}-\d{2}-\d{2})?$/.test(plan[0].tariff.model)||
+  if(config.providerInputBoundsReviewed!==true) throw Error();
+  if(service==='economical'||advanced) {
+   if(plan[0].maxWebSearchCalls!==2 || plan[1].maxWebSearchCalls!==(advanced?0:2))throw Error();
+   if(!/^gpt-5-mini(?:-\d{4}-\d{2}-\d{2})?$/.test(plan[0].tariff.model)||
      !(advanced?/^gpt-6-astra(?:-\d{4}-\d{2}-\d{2})?$/:/^gpt-5-mini(?:-\d{4}-\d{2}-\d{2})?$/).test(plan[1].tariff.model))throw Error();
+  } else if(service==='transcription') {
+   if(!/^gpt-4o(?:-mini)?-transcribe(?:-\d{4}-\d{2}-\d{2})?$/.test(plan[0].tariff.model)||!Number.isSafeInteger(plan[0].tariff.audioInputNanoUsd)||!plan[0].tariff.audioInputNanoUsd||plan[0].maxWebSearchCalls!==0)throw Error();
+  } else {
+   if(plan.some(s=>!/^gpt-(?:5-mini|6-astra)(?:-\d{4}-\d{2}-\d{2})?$/.test(s.tariff.model)))throw Error();
+   const tools=service==='document'?[0,0]:service==='analysis'?[0,2,0]:[2,2];
+   if(plan.some((s,i)=>s.maxWebSearchCalls!==tools[i]))throw Error();
+  }
   const quote=quoteReservation(plan,exchange,Date.now());
   if(quote.customerBaseCents<1||quote.customerBaseCents>50000)throw Error();
   return {plan,exchange,ceiling:quote.customerBaseCents};
  } catch {throw Error('METER_SETUP');}
 }
 export async function commercialFundingInfo(db:Admin,actor:string) {
+ const wallets=await commercialWallets(db,actor);
+ return {mode:'commercial' as const,wallets,ceilings:{economical:meterConfiguration('economical').ceiling,advanced:meterConfiguration('advanced').ceiling}};
+}
+export async function commercialWallets(db:Admin,actor:string) {
  const result=await db.rpc('ai_meter_wallets',{p_actor:actor});checked(result.error);
  const wallets=result.data as {id:string;scope:string;balanceCents:number;reservedCents:number;availableCents:number;active:boolean;frozen:boolean}[];
  if(!Array.isArray(wallets))throw Error('METER_SETUP');
- return {mode:'commercial' as const,wallets,ceilings:{economical:configuration(false).ceiling,advanced:configuration(true).ceiling}};
+ return wallets;
 }
 export async function reserveCommercialResearch(db:Admin,actor:string,id:string,advanced:boolean,walletId?:unknown,maxDebitCents?:unknown) {
+ return reserveCommercialService(db,actor,id,advanced?'advanced':'economical',walletId,maxDebitCents);
+}
+export async function reserveCommercialService(db:Admin,actor:string,id:string,service:MeterService,walletId?:unknown,maxDebitCents?:unknown) {
  if(!commercialMeterEnabled())throw Error('METER_SETUP');
- const {plan,exchange,ceiling}=configuration(advanced);
+ const {plan,exchange,ceiling}=meterConfiguration(service);
  if(typeof maxDebitCents!=='number'||!Number.isSafeInteger(maxDebitCents)||maxDebitCents<ceiling||maxDebitCents>50000)throw Error('METER_QUOTE_CHANGED');
- const {wallets}=await commercialFundingInfo(db,actor);
+ const wallets=await commercialWallets(db,actor);
  const selected=walletId==null&&wallets.length===1?wallets[0]:wallets.find(w=>w.id===walletId);
  if(!selected)throw Error('METER_FORBIDDEN');
  const stored=await db.from('ai_credit_wallets').select('live_customer,live_subscription,organization_id').eq('id',selected.id).single();
@@ -84,8 +102,21 @@ export function meteredResearchBody(meter:MeterRequest,index:number,body:Record<
   max_output_tokens:stage.maxOutput,...(stage.maxWebSearchCalls>0?{max_tool_calls:stage.maxWebSearchCalls}:{}),truncation:'disabled'};
 }
 export async function recordCommercialResearch(db:Admin,actor:string,meter:MeterRequest,index:number,raw:unknown) {
+ try { await recordUsage(db,actor,meter,index,readResponseUsage(raw)); } catch {throw Error('METER_UNCONFIRMED');}
+}
+export async function recordCommercialAudio(db:Admin,actor:string,meter:MeterRequest,raw:unknown,requestId:string) {
+ try { await recordUsage(db,actor,meter,0,readTranscriptionUsage(raw,requestId,meter.plan[0].tariff.model)); } catch {throw Error('METER_UNCONFIRMED');}
+}
+export async function skipCommercialResearch(db:Admin,actor:string,meter:MeterRequest) {
+ // Only the no-jurisdiction branch, before any research submission, may skip.
+ if(meter.plan.length!==3)throw Error('METER_SETUP');
+ const stage=meter.plan[1];
+ const result=await db.rpc('ai_meter_record',{p_actor:actor,p_id:meter.id,p_stage:1,p_usage:{responseId:`skip_${meter.id}`,model:stage.tariff.model,tier:stage.tariff.tier,input:0,cachedInput:0,output:0,webSearchCalls:0,reason:'no_research_jurisdiction'}});
+ checked(result.error);if(result.data!==true)throw Error('METER_UNCONFIRMED');
+}
+async function recordUsage(db:Admin,actor:string,meter:MeterRequest,index:number,usage:ResponseUsage) {
  try {
-  const usage=readResponseUsage(raw),stage=meter.plan[index];
+  const stage=meter.plan[index];
   if(!stage||usage.input>stage.maxInput||usage.output>stage.maxOutput||usage.webSearchCalls>stage.maxWebSearchCalls)throw Error();
   responseCostNanoUsd(usage,stage.tariff,Date.parse(meter.created_at));
   const result=await db.rpc('ai_meter_record',{p_actor:actor,p_id:meter.id,p_stage:index,p_usage:usage});

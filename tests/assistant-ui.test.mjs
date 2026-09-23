@@ -11,6 +11,7 @@ const source = ts.transpileModule(readFileSync(new URL("../components/assistant-
 function render(states = {}, organizationId, workflow) {
   let index = 0;
   const deps = {
+    './service-funding':{useServiceFunding:()=>({ready:true,headers:{},panel:null,refresh:()=>{}})},
     react: { ...React, useState: initial => { const i = index++; return [Object.hasOwn(states, i) ? states[i] : initial, () => {}]; }, useRef: initial => ({ current: initial }), useEffect: () => {} },
     "react/jsx-runtime": jsx,
     "next/link": ({ href, children, ...props }) => React.createElement("a", { href, ...props }, children),

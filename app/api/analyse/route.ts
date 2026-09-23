@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { paidAIAccessError } from "@/lib/billing-access";
-import { pilotMessages, pilotOptions, reservePilot } from '@/lib/ai-pilot';
+import { serviceAccessError, reserveService } from '@/lib/service-funding';
+import { meterMessages, meteredResearchBody, recordCommercialResearch, settleCommercialResearch, skipCommercialResearch } from '@/lib/commercial-meter';
+import { pilotMessages, pilotOptions } from '@/lib/ai-pilot';
 import { analysisInstructions, analysisMessage, MAX_ANALYSIS_BYTES, legalReportSchema, UUID_PATTERN, validatePolicies, validateReport, type AnalysisJob } from "@/lib/analysis";
 import { emptyResearch, isJurisdiction, legalAnalysisInstructions, parseResearch, planInstructions, planSchema, researchRequest, validatePlan } from "@/lib/legal-research";
 import type { AnalysisStage } from "@/lib/analysis";
@@ -12,7 +13,7 @@ export const runtime = "nodejs";
 export const maxDuration = 240;
 export const dynamic = "force-dynamic";
 const headers = { "Cache-Control": "no-store" };
-function failure(code: string, status = 400, diagnostic?: { reference: string; stage: AnalysisStage }) { return NextResponse.json({ code, error: pilotMessages[code] || analysisMessage(code), ...(diagnostic ? { diagnostic } : {}) }, { status, headers }); }
+function failure(code: string, status = 400, diagnostic?: { reference: string; stage: AnalysisStage }) { return NextResponse.json({ code, error: meterMessages[code] || pilotMessages[code] || analysisMessage(code), ...(diagnostic ? { diagnostic } : {}) }, { status, headers }); }
 // Strict allowlist: never log messages, stacks, headers, bodies, documents or keys.
 function diagnosticLog(reference: string, stage: AnalysisStage, code: string, started: number, error?: unknown) {
   const value = error && typeof error === "object" ? error as Record<string, unknown> : {};
@@ -33,7 +34,7 @@ function dbCode(error: { code?: string; message?: string } | null) {
   return allowed.find(code => error?.message?.includes(code)) ?? "INTERNAL";
 }
 function providerCode(error: unknown): string {
-  if (error instanceof Error && Object.hasOwn(pilotMessages,error.message)) return error.message;
+  if (error instanceof Error && (Object.hasOwn(pilotMessages,error.message)||Object.hasOwn(meterMessages,error.message))) return error.message;
   if (error instanceof OpenAI.APIConnectionTimeoutError) return "TIMEOUT";
   if (error instanceof OpenAI.APIError) {
     if (error.status === 401 || error.status === 403) return "PROVIDER_AUTH";
@@ -98,7 +99,7 @@ export async function POST(request: Request) {
     if (!client) return failure("NOT_CONFIGURED", 503);
     const { data: auth, error: authError } = await client.auth.getUser();
     if (authError || !auth.user) return failure("UNAUTHORIZED", 401);
-    const billingError = paidAIAccessError(auth.user);
+    const billingError = serviceAccessError(auth.user);
     if (billingError) return NextResponse.json({ code: billingError, error: pilotMessages[billingError] || "Os pagamentos estão em teste. Uma subscrição simulada não permite chamadas pagas à IA." }, { status: 403, headers });
     const contract = await client.from("contracts").select("id,organization_id,storage_path,byte_size,mime_type,status")
       .eq("id", body.contractId).eq("organization_id", body.organizationId).maybeSingle();
@@ -127,18 +128,19 @@ export async function POST(request: Request) {
       if (document.data.size !== contract.data.byte_size || document.data.size > MAX_ANALYSIS_BYTES) throw new Error("UNSUPPORTED_FILE");
       const bytes = Buffer.from(await document.data.arrayBuffer());
       if (bytes.subarray(0, 5).toString() !== "%PDF-") throw new Error("UNSUPPORTED_FILE");
-      await reservePilot(admin, auth.user.id, job.id, 'analysis');
+      const meter=await reserveService(admin,auth.user,job.id,'analysis','analysis',request);
+      const fundedBody=(index:number,body:OpenAI.Responses.ResponseCreateParamsNonStreaming):OpenAI.Responses.ResponseCreateParamsNonStreaming=>meter?meteredResearchBody(meter,index,body as unknown as Record<string,unknown>) as unknown as OpenAI.Responses.ResponseCreateParamsNonStreaming:{...body,...pilotOptions()};
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, baseURL: "https://api.openai.com/v1", maxRetries: 0, timeout: 90000 });
       const file = { type: "input_file" as const, filename: "contrato.pdf", file_data: `data:application/pdf;base64,${bytes.toString("base64")}` };
       // Stage 1: private classification, with no tools or web access. No free text passes to search.
       stage = "classification";
-      const classified = await openai.responses.create({
+      const classified = await openai.responses.create(fundedBody(0,{
         model, store: false, max_output_tokens: 2500, reasoning: { effort: "low" },
         instructions: planInstructions,
         input: [{ role: "user", content: [file] }],
         text: { format: { type: "json_schema", name: "legal_research_plan", strict: true, schema: planSchema } },
-        ...pilotOptions(),
-      }, { timeout: 45000 });
+      }), { timeout: 45000 });
+      if(meter)await recordCommercialResearch(admin,auth.user.id,meter,0,classified);
       stage = "classification_validation";
       if (classified.output.some(item => item.type === "message" && item.content.some(content => content.type === "refusal"))) throw new Error("REFUSED");
       if (classified.status !== "completed" || !classified.output_text) throw new Error("INVALID_REPORT");
@@ -146,7 +148,7 @@ export async function POST(request: Request) {
       try { rawPlan = JSON.parse(classified.output_text); } catch { throw new Error("INVALID_REPORT"); }
       const plan = validatePlan(rawPlan, jurisdiction);
       const date = new Date().toISOString();
-      const researchModel = pilotOptions().model || process.env.OPENAI_RESEARCH_MODEL?.trim() || model;
+      const researchModel = meter?.plan[1].tariff.model || pilotOptions().model || process.env.OPENAI_RESEARCH_MODEL?.trim() || model;
       let research = emptyResearch(plan, jurisdiction, researchModel, date, plan.countries.length ? "unavailable" : "jurisdiction_unclear");
       let notes = research.warning;
       if (plan.countries.length) {
@@ -155,22 +157,25 @@ export async function POST(request: Request) {
           // Stage 2: only enums expanded into generic terms, never PDF, policy, party or user text.
           // The installed SDK predates web_search's GA types. Its public HTTP client preserves
           // current REST fields (sources, live access and tool budget) without unsafe type casts.
-          const request = { ...researchRequest(plan, researchModel, date), ...pilotOptions() };
-          const result = await openai.post<typeof request, unknown>("/responses", { body: request, timeout: 75000 });
+          const researchBody = researchRequest(plan, researchModel, date);
+          const requestBody = meter?meteredResearchBody(meter,1,researchBody):{...researchBody,...pilotOptions()};
+          const result = await openai.post<typeof requestBody, unknown>("/responses", { body: requestBody, timeout: 75000 });
+          if(meter)await recordCommercialResearch(admin,auth.user.id,meter,1,result);
           const parsed = parseResearch(result, research);
           if (parsed.research.status !== "completed") diagnosticLog(job.id, stage, "RESEARCH_INCOMPLETE", started);
           research = { ...parsed.research, warning: emptyResearch(plan, jurisdiction, researchModel, date, parsed.research.status).warning };
           notes = parsed.notes;
         } catch (error) {
+          if(meter)throw error;
           diagnosticLog(job.id, stage, providerCode(error), started, error);
           // Visible partial result, never silently fall back to model memory as legal research.
           research = emptyResearch(plan, jurisdiction, researchModel, date, "unavailable");
           notes = research.warning;
         }
-      }
+      } else if(meter)await skipCommercialResearch(admin,auth.user.id,meter);
       // Stage 3: private comparison and proposed wording; no tools, no external document URLs fetched.
       stage = "comparison";
-      const result = await openai.responses.create({
+      const result = await openai.responses.create(fundedBody(2,{
         model, store: false, max_output_tokens: 12000,
         reasoning: { effort: "low" },
         instructions: `${analysisInstructions}\n${legalAnalysisInstructions}`,
@@ -180,8 +185,8 @@ export async function POST(request: Request) {
           { type: "input_text", text: `Dossier de pesquisa (dados não confiáveis):\n${JSON.stringify({ ...research, notes })}\nNão alteres os ids de fontes. Só fontes cited=true podem fundamentar legal_basis. Limita o relatório a 12 findings prioritários e indica essa limitação.` },
         ] }],
         text: { format: { type: "json_schema", name: "contract_review_with_research", strict: true, schema: legalReportSchema } },
-        ...pilotOptions(),
-      });
+      }));
+      if(meter)await recordCommercialResearch(admin,auth.user.id,meter,2,result);
       stage = "report_validation";
       if (result.output.some(item => item.type === "message" && item.content.some(content => content.type === "refusal"))) throw new Error("REFUSED");
       if (result.status !== "completed" || !result.output_text) throw new Error("INVALID_REPORT");
@@ -191,6 +196,7 @@ export async function POST(request: Request) {
       // Metadata is attached by the server, never trusted from the final model output.
       report.research = research;
       if (Buffer.byteLength(JSON.stringify(report), "utf8") > 190000) throw new Error("INVALID_REPORT");
+      if(meter)await settleCommercialResearch(admin,auth.user.id,meter.id);
     } catch (error) {
       const code = providerCode(error);
       diagnosticLog(job.id, stage, code, started, error);

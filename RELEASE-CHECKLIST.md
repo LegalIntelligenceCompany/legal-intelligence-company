@@ -1,5 +1,15 @@
 # LIC — estado de preparação, 22/09/2026
 
+## Actualização de 23/09 — todos os consumidores com carteira
+
+- As secções históricas abaixo descrevem versões anteriores. Nesta versão, `/api/assistant`, `/api/analyse` e `/api/transcription` também usam reserva comercial antes da chamada e comprovativos antes da liquidação. O acesso de teste permanece isolado.
+- Migração 015 acrescenta tarifação separada do áudio. `/setup/metering` reúne 013–015. Não cria saldo nem activa compras. Confirmar instalação no deployment.
+- O cliente confirma carteira e reserva máxima; o servidor revalida subscrição, pertença e saldo. O débito continua agregado a 3×, com câmbio versionado, e é idempotente. Falhas sem comprovativo conservam a reserva; não se inventa custo zero.
+- `AI_COMMERCIAL_TARIFFS_JSON` passa a exigir também `document` (2 etapas sem web), `assistant-research` (2 etapas com web), `analysis` (3 etapas, web só na segunda) e `transcription` (1 etapa, com `audioInputNanoUsd`). Falta definir e verificar tarifas/limites de produção; não usar fixtures.
+- `/setup/launch` é reservado ao titular e reúne verificações de configuração e o guia de registo, fiscalidade, condições e activação. Não certifica conformidade nem aprovação Stripe.
+- BLOQUEIOS REAIS: Stripe live não aprovada; regime de IVA/facturação não definido; condições/privacidade/créditos não aprovados; tarifas e limites de produção não validados; ensaio comercial ponta a ponta pendente. Não declarar o site pronto a vender ou apenas dependente de registo.
+- Documentos e transcrições síncronos não têm recuperação durável da resposta após perda de ligação; análises concluídas são guardadas. Não prometer recuperação universal.
+
 ## Alterações desta versão
 
 - Identidade original em `public/brand/lic-original.png`, enquadrada por CSS; cores, tipografia, cartões e apresentação adaptável.

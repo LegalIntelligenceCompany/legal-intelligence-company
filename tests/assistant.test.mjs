@@ -2,9 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import ts from "typescript";
-import {pilotModule} from './pilot-helper.mjs';
+import {pilotModule,fundingDependencies} from './pilot-helper.mjs';
 import * as research from "../lib/legal-research.ts";
 function load(path, deps, env = {}) {
+  if(path.includes('/api/assistant/'))deps=fundingDependencies(deps);
   const source = ts.transpileModule(readFileSync(new URL(path, import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
   const module = { exports: {} }; new Function("require", "module", "exports", "process", "console", source)(name => { if (!(name in deps)) throw new Error(name); return deps[name]; }, module, module.exports, { env: { AI_EXECUTION_ENABLED: "true", OPENAI_API_KEY: "test-only", OPENAI_MODEL: "gpt-5-mini", ...env } }, { warn() {} }); return module.exports;
 }

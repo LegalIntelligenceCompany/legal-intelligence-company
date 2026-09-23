@@ -9,6 +9,7 @@ try{
  create table organizations(id uuid primary key);create table organization_members(organization_id uuid,user_id uuid,role text);`);
  await db.exec(readFileSync(new URL('../supabase/migrations/010_research_jobs.sql',import.meta.url),'utf8'));
  const sql=readFileSync(new URL('../supabase/migrations/013_inference_wallet.sql',import.meta.url),'utf8');await db.exec(sql);await db.exec(sql);
+ const audioSql=readFileSync(new URL('../supabase/migrations/015_audio_metering.sql',import.meta.url),'utf8');await db.exec(audioSql);await db.exec(audioSql);
  const [a,b,c,d,w,org]=Array.from({length:6},randomUUID);
  for(const id of [a,b,c,d])await db.query('insert into auth.users values($1,now())',[id]);
  await db.query('insert into organizations values($1)',[org]);
@@ -39,6 +40,17 @@ try{
  const settled=await Promise.all(Array.from({length:4},()=>call('ai_meter_settle',[a,id])));assert.deepEqual(settled,[1,1,1,1]);
  assert.equal(Number((await state()).balance_cents),99);assert.equal(Number((await state()).reserved_cents),0);
  assert.equal((await db.query('select * from ai_credit_movements')).rows.length,1);
+ // Independent audio wallet fixture: separate token rates, no duplicate debit.
+ const audioWallet=randomUUID(),audioId=randomUUID();
+ await db.query("insert into ai_credit_wallets(id,owner_id,balance_cents,live_customer,live_subscription,active_until) values($1,$2,100,'cus_audio','sub_audio',now()+interval '1 day')",[audioWallet,a]);
+ const audioPlan=[{tariff:{...tariff,audioInputNanoUsd:5000},maxInput:1000,maxOutput:1000,maxWebSearchCalls:0}];
+ await call('ai_meter_reserve',[a,audioWallet,audioId,10,JSON.stringify(audioPlan),JSON.stringify(exchange)]);
+ const audioUsage={...usage,responseId:'req_audio',audioInput:90};
+ await assert.rejects(call('ai_meter_record',[a,audioId,0,JSON.stringify({...audioUsage,audioInput:101})]),/METER_CEILING/);
+ await call('ai_meter_record',[a,audioId,0,JSON.stringify(audioUsage)]);
+ assert.equal(Number((await db.query('select cost_nano_usd from ai_meter_receipts where request_id=$1',[audioId])).rows[0].cost_nano_usd),560000);
+ assert.equal(await call('ai_meter_settle',[a,audioId]),1);
+ assert.equal(await call('ai_meter_settle',[a,audioId]),1);
  const concurrent=await Promise.allSettled(Array.from({length:5},()=>reserve(randomUUID(),b,30)));
  assert.equal(concurrent.filter(r=>r.status==='fulfilled').length,3);assert.equal(Number((await state()).reserved_cents),90);
  await db.query('delete from organization_members where organization_id=$1 and user_id=$2',[org,b]);

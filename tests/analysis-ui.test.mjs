@@ -14,6 +14,7 @@ function render(report, states = {}) {
   let stateIndex = 0;
   const job = report ? { status: "completed", id: "fixture", created_at: "2026-09-21T00:00:00Z", model: "test", policy_snapshot: [], report } : null;
   const modules = {
+    './service-funding':{useServiceFunding:()=>({ready:true,headers:{},panel:null,refresh:()=>{}})},
     react: { ...React, useState: initial => { const index = stateIndex++; return [Object.hasOwn(states, index) ? states[index] : index === 0 ? job : index === 1 ? true : index === 2 ? false : initial, () => {}]; }, useEffect: () => {}, useRef: value => ({ current: value }), useCallback: callback => callback },
     "react/jsx-runtime": jsx,
     "next/link": ({ href, children, ...props }) => React.createElement("a", { href, ...props }, children),

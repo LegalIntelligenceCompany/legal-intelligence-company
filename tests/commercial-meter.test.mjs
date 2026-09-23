@@ -18,7 +18,8 @@ function setup(patch={}){
  const tariff={id:'synthetic',model:'gpt-5-mini',tier:'default',validFrom:'2020-01-01',validUntil:'2100-01-01',inputNanoUsd:1000,cachedInputNanoUsd:100,outputNanoUsd:1000,webSearchNanoUsd:10000000,maxInputTokens:100000};
  const stage={tariff,maxInput:100000,maxOutput:1000,maxWebSearchCalls:2};
  const exchange={id:'synthetic',validFrom:'2020-01-01',validUntil:'2100-01-01',eurNumerator:9,usdDenominator:10};
- const config={providerInputBoundsReviewed:true,economical:[stage,stage],advanced:[stage,{...stage,tariff:{...tariff,model:'gpt-6-astra'},maxWebSearchCalls:0}],exchange};
+ const privateStage={...stage,maxWebSearchCalls:0};
+ const config={providerInputBoundsReviewed:true,economical:[stage,stage],advanced:[stage,{...stage,tariff:{...tariff,model:'gpt-6-astra'},maxWebSearchCalls:0}],document:[privateStage,privateStage],'assistant-research':[stage,stage],analysis:[privateStage,stage,privateStage],transcription:[{...privateStage,tariff:{...tariff,model:'gpt-4o-mini-transcribe',audioInputNanoUsd:5000}}],exchange};
  const api=load('../lib/commercial-meter.ts',{'server-only':{},'./inference-cost':cost,'./live-subscription':{readLivePeriod:async()=>{calls.push('stripe-read');return new Date(Date.now()+86400000).toISOString();}}},{AI_COMMERCIAL_ENABLED:'true',STRIPE_SECRET_KEY:'sk_live_fixture',AI_COMMERCIAL_TARIFFS_JSON:JSON.stringify(config),...patch});
  let meter;
  const db={rpc:async(name,args)=>{calls.push(name);if(name==='ai_meter_wallets')return {data:[{id:'wallet',availableCents:1000,active:true,frozen:false}]};if(name==='ai_meter_reserve')meter={id:args.p_id,actor_id:args.p_actor,plan:args.p_plan,exchange:args.p_exchange,created_at:new Date().toISOString(),state:'reserved'};return {data:name==='ai_meter_settle'?1:true};},from(table){let updating=false;const q={select(){return q;},eq(){return q;},update(){updating=true;return q;},async single(){return {data:table==='ai_meter_requests'?meter:updating?{id:'wallet'}:{live_customer:'cus_one',live_subscription:'sub_one',organization_id:null}};}};return q;}};
@@ -39,4 +40,12 @@ test('test keys, missing tariffs, missing approval and wallet mismatch cannot re
  const missing=setup({AI_COMMERCIAL_TARIFFS_JSON:''});await assert.rejects(missing.api.reserveCommercialResearch(missing.db,'actor','request',false,'wallet',100),/METER_SETUP/);
  const s=setup();await assert.rejects(s.api.reserveCommercialResearch(s.db,'actor','request',false,'wallet',0),/METER_QUOTE_CHANGED/);assert.deepEqual(s.calls,[]);
  await assert.rejects(s.api.reserveCommercialResearch(s.db,'actor','request',false,'somebody-else',100),/METER_FORBIDDEN/);assert.ok(!s.calls.includes('ai_meter_reserve'));
+});
+test('each service reserves its complete plan; private stages cannot gain web tools',async()=>{
+ for(const [service,length] of [['document',2],['assistant-research',2],['analysis',3],['transcription',1]]){
+  const {api,db,calls}=setup();const meter=await api.reserveCommercialService(db,'actor','request',service,'wallet',500);
+  assert.equal(meter.plan.length,length);assert.equal(calls.filter(c=>c==='ai_meter_reserve').length,1);
+  if(service!=='assistant-research')assert.throws(()=>api.meteredResearchBody(meter,0,{tools:[{type:'web_search'}]}),/METER_SETUP/);
+  if(service==='transcription')await api.recordCommercialAudio(db,'actor',meter,{usage:{type:'tokens',input_tokens:10,input_token_details:{audio_tokens:9,text_tokens:1},output_tokens:1,total_tokens:11}},'req_test');
+ }
 });

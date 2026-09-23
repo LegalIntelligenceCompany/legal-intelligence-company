@@ -1,6 +1,7 @@
 "use client";
 import { exportAnalysis } from "@/lib/report-export";
 import Link from "next/link";
+import {useServiceFunding} from './service-funding';
 import { useCallback, useEffect, useRef, useState } from "react";
 import { analysisMessage, analysisStages, UUID_PATTERN, MAX_ANALYSIS_BYTES, type AnalysisStage, type AnalysisJob } from "@/lib/analysis";
 import type { Contract } from "@/lib/documents";
@@ -12,6 +13,7 @@ const temporalLabels = { current_indicated: "Vigência indicada pela pesquisa �
 const countryOptions = COUNTRY_CODES.map(code => ({ code, name: countryName(code) })).sort((a, b) => a.name.localeCompare(b.name, "pt-PT"));
 
 export function ContractAnalysis({ contract }: { contract: Contract }) {
+  const funding=useServiceFunding('analysis');
   const [job, setJob] = useState<AnalysisJob | null>(null);
   const [configured, setConfigured] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -47,25 +49,25 @@ export function ContractAnalysis({ contract }: { contract: Contract }) {
   }, [busy, processing, load]);
 
   async function analyse() {
-    if (inFlight.current || !consent) return;
+    if (inFlight.current || !consent || !funding.ready) return;
     const rerun = job?.status === "completed";
     if (rerun && !window.confirm("Criar nova análise com as políticas actuais e uma nova pesquisa jurídica na web? Isto tem novos custos de IA e pesquisa. O relatório anterior fica guardado na base de dados.")) return;
     inFlight.current = true; setBusy(true); setError(""); setDiagnostic(null);
     try {
       const response = await fetch("/api/analyse", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json",...funding.headers },
         body: JSON.stringify({ contractId: contract.id, organizationId: contract.organization_id, consent: true, researchConsent: true, jurisdiction, rerun }),
       });
       const result = await response.json();
       if (!response.ok && mounted.current) {
-        setError(analysisMessage(result.code));
+        setError(result.error||analysisMessage(result.code));
         if (typeof result.diagnostic?.reference === "string" && UUID_PATTERN.test(result.diagnostic.reference) && Object.hasOwn(analysisStages, result.diagnostic.stage)) {
           setDiagnostic({ reference: result.diagnostic.reference, stage: result.diagnostic.stage });
         }
       }
     } catch { if (mounted.current) setError("A ligação foi interrompida. Actualize o estado antes de tentar novamente: a análise pode continuar no servidor."); }
     finally {
-      await load(); inFlight.current = false;
+      await load(); inFlight.current = false;funding.refresh();
       if (mounted.current) { setBusy(false); setConsent(false); }
     }
   }
@@ -127,7 +129,8 @@ export function ContractAnalysis({ contract }: { contract: Contract }) {
       <p className="team-muted">Indique a lei aplicável, não apenas o país da empresa. Se a IA não a conseguir identificar com segurança, pedirá esclarecimento no relatório. O direito da UE será considerado quando relevante.</p>
       <label className="analysis-consent"><input type="checkbox" checked={consent} onChange={event => setConsent(event.target.checked)}/><span>Autorizo o envio deste contrato e das políticas à OpenAI, e a pesquisa web de temas jurídicos genéricos através dos seus fornecedores de pesquisa. Confirmo que posso partilhar os dados e aceito os custos de IA e pesquisa na conta API.</span></label>
       <p className="team-muted">A pesquisa recebe apenas países e temas de uma lista controlada, não o PDF, cláusulas ou nomes. O pedido usa store:false, que não garante retenção zero pelo fornecedor. Limite: 20 tentativas por empresa em 24 horas; uma de cada vez. As alterações propostas não são aplicadas ao documento.</p>
-      <button className="btn btn-primary" disabled={!consent} onClick={analyse}>{report ? "Criar nova análise" : job ? "Tentar análise novamente" : "Analisar contrato"}</button>
+      {funding.panel}
+      <button className="btn btn-primary" disabled={!consent||!funding.ready} onClick={analyse}>{report ? "Criar nova análise" : job ? "Tentar análise novamente" : "Analisar contrato"}</button>
     </div>}
     <div className="workspace-toolbar" style={{ marginTop: 20 }}><button className="btn btn-secondary" disabled={loading} onClick={() => { setError(""); setDiagnostic(null); void load(); }}>Actualizar estado</button><Link href="/policies" className="btn btn-secondary">Ver políticas</Link></div>
   </section>;

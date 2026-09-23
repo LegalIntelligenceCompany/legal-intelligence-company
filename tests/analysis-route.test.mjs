@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import ts from "typescript";
-import {pilotModule} from './pilot-helper.mjs';
+import {pilotModule,fundingDependencies} from './pilot-helper.mjs';
 import * as analysis from "../lib/analysis.ts";
 import * as research from "../lib/legal-research.ts";
 
@@ -66,6 +66,7 @@ function setup(options = {}) {
     "@/lib/legal-research": research,
   };
   const exports = {};
+  Object.assign(modules,fundingDependencies(modules));
   new Function("require", "exports", "process", "Buffer", "console", source)(name => { if (!(name in modules)) throw new Error(`Unexpected import ${name}`); return modules[name]; }, exports, { env: { AI_EXECUTION_ENABLED: options.paused ? "false" : "true", OPENAI_API_KEY: options.noKey ? "" : "test-only-not-a-real-key", SUPABASE_SERVICE_ROLE_KEY: "test-only" } }, Buffer, { warn: (...args) => calls.diagnostics.push(args) });
   return { route: exports, calls };
 }

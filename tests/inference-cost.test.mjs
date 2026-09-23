@@ -45,3 +45,15 @@ test('worst-case reservation ignores cache discounts and covers all stages',()=>
  assert.equal(api.quoteReservation(stages,fx,at).customerBaseCents,38);
  assert.throws(()=>api.quoteReservation([{...stages[0],maxInput:100001}],fx,at),/CONTEXT_PRICE_UNCONFIRMED/);
 });
+test('audio receipts price audio separately and reserve at the higher input rate',()=>{
+ const raw={usage:{type:'tokens',input_tokens:100,input_token_details:{audio_tokens:90,text_tokens:10},output_tokens:20,total_tokens:120}};
+ const usage=api.readTranscriptionUsage(raw,'req_audio','fixture-model');
+ const audioTariff={...tariff,audioInputNanoUsd:5000};
+ assert.equal(api.responseCostNanoUsd(usage,audioTariff,at),492500n);
+ assert.throws(()=>api.responseCostNanoUsd(usage,tariff,at),/USAGE_UNCONFIRMED/);
+ const quote=api.quoteReservation([{tariff:audioTariff,maxInput:100000,maxOutput:100,maxWebSearchCalls:0}],fx,at);
+ assert.equal(quote.customerBaseCents,136);
+ assert.throws(()=>api.readTranscriptionUsage(raw,'invented','fixture-model'),/USAGE_UNCONFIRMED/);
+ assert.throws(()=>api.readTranscriptionUsage({usage:{...raw.usage,input_tokens:101}},'req_audio','fixture-model'),/USAGE_UNCONFIRMED/);
+ assert.throws(()=>api.readTranscriptionUsage({usage:{...raw.usage,type:'duration'}},'req_audio','fixture-model'),/USAGE_UNCONFIRMED/);
+});
