@@ -97,3 +97,9 @@ Pedidos e respostas locais ficam acessíveis por 24 horas, apenas ao dono atrav�
 - https://developers.openai.com/api/docs/pricing
 
 Preços documentados do Astra em contexto curto Standard: USD 10/M entrada e USD 50/M saída. A reserva é uma margem conservadora, não uma tarifa ao cliente. Revisitar preços e limites antes de prolongar o piloto; expiração actual 29/09/2026.
+# Preparação de tarifas — 23/09/2026
+
+- `/setup/tariffs`, reservada ao titular, reúne preços oficiais de referência, consulta informativa de câmbio BCE com validade e simulador local de custo agregado ×3. Não chama IA, grava configuração nem toca em saldos.
+- A tabela é datada, não se auto-aprova nem é importada no motor de cobranças. O simulador não representa uma reserva efectiva. Falha/atraso da referência cambial desactiva a simulação, sem assumir USD=EUR.
+- **Continua pendente** configurar tarifas comerciais completas: limites agregados garantidos, escrita de cache/escalões Astra, tarifas de áudio/texto e política de câmbio comercial. A taxa BCE é informativa, não uma cotação bancária. Não marcar `providerInputBoundsReviewed` sem evidência.
+- Não há nova migração SQL nesta alteração. Permanecem desligadas as compras e chamadas comerciais. Acesso real aos modelos e custos facturados não foram testados nesta preparação.
