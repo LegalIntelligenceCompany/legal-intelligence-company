@@ -8,6 +8,9 @@ import {validateAssistantInput,parseAssistantResponse} from '@/lib/assistant';
 import {researchErrors,publicJob,researchBody,reviewedResult,validResponseId,type ResearchJob} from '@/lib/research-jobs';
 import {allowedResearchModel,advancedReviewBody,advancedReviewResult} from '@/lib/research-models';
 import {commercialMeterEnabled,commercialFundingInfo,meterMessages,reserveCommercialResearch,loadCommercialResearch,meteredResearchBody,recordCommercialResearch,settleCommercialResearch} from '@/lib/commercial-meter';
+import {reserveCommercialService,meterConfiguration} from '@/lib/commercial-meter';
+import {reviewerCatalogue,configuredReviewer} from '@/lib/reviewer-catalogue';
+import {externalReview,checkExternalModel} from '@/lib/external-review';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=60;
@@ -25,8 +28,15 @@ export async function GET(){
   if(!commercialMeterEnabled())funding={mode:'disabled'};
   else try{funding=await commercialFundingInfo(admin,user.id);}catch{funding={mode:'disabled',error:meterMessages.METER_SETUP};}
  }
- return json({job:found.data?publicJob(found.data):null,funding});
+ const models: {id:string;label:string;available:boolean;reason?:string;ceiling?:number}[]=[];
+ try{for(const row of reviewerCatalogue()){
+  let ceiling:number|undefined;try{ceiling=meterConfiguration(row.id as `review-${string}`).ceiling;}catch{/* No key or reviewed tariff. */}
+  const available=commercialMeterEnabled()&&deniedCommercial(user)&&ceiling!==undefined;
+  models.push({id:row.id,label:row.label,available,ceiling,reason:available?undefined:'Requer acesso comercial, chave e tarifas validadas.'});
+ }}catch{/* Invalid catalogue fails closed. */}
+ return json({job:found.data?publicJob(found.data):null,funding,models});
 }
+function deniedCommercial(user:Parameters<typeof paidAIAccessError>[0]){return paidAIAccessError(user)==='BILLING_TEST_ONLY';}
 export async function POST(request:Request){
  if(request.headers.get('origin')!==new URL(request.url).origin)return fail('FORBIDDEN',403);
  if(!request.headers.get('content-type')?.startsWith('application/json'))return fail('INVALID_REQUEST');
@@ -51,17 +61,20 @@ export async function POST(request:Request){
    const input=validateAssistantInput(body.input);
    if(input.mode!=='research'||input.organizationId||input.material||body.backgroundConsent!==true)return fail('INVALID_REQUEST');
    const model=body.model??PILOT_MODEL;
-   if(!allowedResearchModel(model))return fail('MODEL',403);
+   const external=typeof model==='string'&&model.startsWith('review-');
+   if(external){if(!commercial)return fail('MODEL_UNAVAILABLE',403);configuredReviewer(model);meterConfiguration(model as `review-${string}`);}
+   else if(!allowedResearchModel(model))return fail('MODEL',403);
    const existing=await admin.from('research_jobs').select('*').eq('id',input.requestId).eq('owner_id',user.id).maybeSingle();
    if(existing.error)return fail('SETUP',503);if(existing.data)return json({job:publicJob(existing.data)});
+   if(external)await checkExternalModel(configuredReviewer(model));
    // Availability check has no generation and happens before any reservation.
-   if(model!==PILOT_MODEL){try{await openai.models.retrieve(model);}catch{return fail('MODEL_UNAVAILABLE',503);}}
+   if(model!==PILOT_MODEL&&!external){try{await openai.models.retrieve(model);}catch{return fail('MODEL_UNAVAILABLE',503);}}
    await admin.from('research_jobs').update({state:'failed',error:'EXPIRED',updated_at:now()}).eq('owner_id',user.id).in('state',['starting','draft','review_starting','review']).lt('updated_at',new Date(Date.now()-8*60000).toISOString());
    const inserted=await admin.from('research_jobs').insert({id:input.requestId,owner_id:user.id,input,model,...(commercial?{funding_mode:'commercial'}:{})}).select('*').single();
    if(inserted.error)return fail(inserted.error.code==='23505'?'BUSY':'SETUP',409);
    job=inserted.data;
    const claim=await admin.rpc('assistant_begin',{p_id:input.requestId,p_actor:user.id});if(claim.error)throw Error('BUSY');
-   const meter=commercial?await reserveCommercialResearch(admin,user.id,input.requestId,model!==PILOT_MODEL,body.walletId,body.maxDebitCents):null;
+   const meter=commercial?(external?await reserveCommercialService(admin,user.id,input.requestId,model as `review-${string}`,body.walletId,body.maxDebitCents):await reserveCommercialResearch(admin,user.id,input.requestId,model!==PILOT_MODEL,body.walletId,body.maxDebitCents)):null;
    if(!commercial)await reservePilot(admin,user.id,input.requestId,model===PILOT_MODEL?'research':'research-advanced');
    submitting=true;
    const draftBody=researchBody(input,PILOT_MODEL);
@@ -78,8 +91,11 @@ export async function POST(request:Request){
   if(['completed','failed'].includes(job!.state))return json({job:publicJob(job!)});
   if(Date.now()-Date.parse(job!.updated_at)>8*60000){await update({state:'failed',error:'EXPIRED'});return json({job:publicJob(job!)});}
   if(['starting','review_starting'].includes(job!.state))return json({job:publicJob(job!)});
-  if(!validResponseId(job!.response_id))throw Error('UNKNOWN');
-  const raw=await openai.get<unknown,Record<string,unknown>>('/responses/'+job!.response_id);
+  const external=job!.model.startsWith('review-');
+  const saved=(job!.result as {externalReview?:Record<string,unknown>}|undefined)?.externalReview;
+  if(!(external&&job!.state==='review')&&!validResponseId(job!.response_id))throw Error('UNKNOWN');
+  const raw=external&&job!.state==='review'?saved:await openai.get<unknown,Record<string,unknown>>('/responses/'+job!.response_id);
+  if(!raw)throw Error('UNKNOWN');
   if(['queued','in_progress'].includes(String(raw.status)))return json({job:publicJob(job!)});
   const meter=job!.funding_mode==='commercial'?await loadCommercialResearch(admin,user.id,job!.id):null;
   if(meter)await recordCommercialResearch(admin,user.id,meter,job!.state==='draft'?0:1,raw);
@@ -92,12 +108,24 @@ export async function POST(request:Request){
    const lock=await admin.from('research_jobs').update({state:'review_starting',result:draft,updated_at:now()}).eq('id',job!.id).eq('owner_id',user.id).eq('state','draft').select('*').maybeSingle();
    if(lock.error)throw Error('UNKNOWN');if(!lock.data)return json({job:publicJob({...job!,state:'review_starting'})});job=lock.data;
    submitting=true;
+   if(external){
+    if(!meter)throw Error('METER_SETUP');
+    const reviewer=configuredReviewer(job!.model),stage=meter.plan[1];
+    if(stage.tariff.model!==reviewer.model||stage.maxWebSearchCalls!==0)throw Error('METER_SETUP');
+    // Revalidate the frozen tariff; never adopt a new model during recovery.
+    meteredResearchBody(meter,1,reviewBody);
+    const body=advancedReviewBody(job!.input,draft);
+    const response=await externalReview(reviewer,body.instructions,body.input.map(m=>m.content).join('\n'),body.text.format.schema,stage.maxInput,stage.maxOutput);
+    // Persist the response before settlement. Recovery reads it, never resubmits.
+    await update({state:'review',response_id:null,result:{...draft,externalReview:response}});submitting=false;
+    return json({job:publicJob(job!)});
+   }
    const review=await openai.post<unknown,Record<string,unknown>>('/responses',{body:meter?meteredResearchBody(meter,1,reviewBody):reviewBody});
    if(!validResponseId(review.id))throw Error('UNKNOWN');
    await update({state:'review',response_id:review.id});submitting=false;
   }else{
    if(job!.model!==PILOT_MODEL&&!job!.result)throw Error('INCOMPLETE');
-   const result=job!.model===PILOT_MODEL?reviewedResult(raw,job!.model):advancedReviewResult(raw,job!.result!);
+   const result=job!.model===PILOT_MODEL?reviewedResult(raw,job!.model):advancedReviewResult(raw,job!.result!,external?meter?.plan[1].tariff.model:undefined);
    const chargedCents=meter?await settleCommercialResearch(admin,user.id,job!.id):undefined;
    await update({state:'completed',result:{...result,...(chargedCents!==undefined?{chargedCents}:{})}});
    await admin.rpc('assistant_finish',{p_id:job!.id,p_actor:user.id,p_success:true});

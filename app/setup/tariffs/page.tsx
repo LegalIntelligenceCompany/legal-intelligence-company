@@ -6,6 +6,7 @@ import {isBillingTester} from '@/lib/billing';
 import {meterConfiguration,meterServices} from '@/lib/commercial-meter';
 import {referenceExchange} from '@/lib/reference-exchange';
 import {referenceTariffs,tariffReviewDate,tariffReviewUntil,ecbSource} from '@/lib/tariff-preparation';
+import {commercialConsumptionPolicy} from '@/lib/commercial-plans';
 export const dynamic='force-dynamic';
 export const metadata={title:'Preparar tarifas e consumo | LIC',robots:{index:false,follow:false}};
 const names={economical:'Chat económico',advanced:'Chat avançado',document:'Documentos privados','assistant-research':'Pesquisa nas ferramentas',analysis:'Análise de contratos',transcription:'Transcrição de áudio'};
@@ -15,7 +16,7 @@ export default async function Tariffs(){
  const exchange=await referenceExchange();
  const expired=Date.now()>=Date.parse(tariffReviewUntil);
  return <AppShell><div className="eyebrow">Reservado ao titular · sem operações pagas</div><h1>Preparar tarifas e consumo</h1>
-  <section className="card team-panel"><h2>O que está preparado</h2><p>A regra comercial é custo agregado confirmado × 3, convertido em euros, antes de IVA. A reserva cobre o máximo aprovado pelo cliente; a diferença só é libertada após confirmação do consumo.</p><p>Esta página não activa compras, não grava tarifas, não altera saldos e não aumenta o orçamento de teste. Não é necessário repetir o SQL para a consultar.</p></section>
+  <section className="card team-panel"><h2>O que está preparado</h2><p>A regra comercial é custo agregado confirmado × {String(commercialConsumptionPolicy.providerCostMultiplier).replace('.',',')}, convertido em euros, antes de IVA. A reserva cobre o máximo aprovado pelo cliente; a diferença só é libertada após confirmação do consumo.</p><p>Esta página não activa compras, não grava tarifas, não altera saldos e não aumenta o orçamento de teste. Não é necessário repetir o SQL para a consultar.</p><Link className="btn btn-primary" href="/setup/models">Preparar Claude, Gemini e escolha de modelos</Link></section>
   <section className="card team-panel"><h2>Tarifas publicadas de referência</h2><p>USD por milhão de tokens, processamento Standard, endpoint global. Consulta: {tariffReviewDate}. {expired?'Revisão expirada: verificar novamente as fontes antes de configurar.':'Referência para preparação; não constitui configuração de produção.'}</p>
   <div style={{overflowX:'auto'}}><table><caption>Modelos de texto actualmente integrados</caption><thead><tr><th scope="col">Modelo</th><th scope="col">Entrada</th><th scope="col">Entrada em cache</th><th scope="col">Saída</th></tr></thead><tbody>{referenceTariffs.map(t=><tr key={t.model}><th scope="row"><a href={t.source}>{t.model}</a></th><td>{t.input}</td><td>{t.cached}</td><td>{t.output}</td></tr>)}</tbody></table></div>
   <ul>{referenceTariffs.map(t=><li key={t.model}>{t.model}: {t.extra}</li>)}</ul><p><a href="https://developers.openai.com/api/docs/pricing">Tabela oficial de preços e ferramentas</a>. O consumo de raciocínio já está incluído nos tokens de saída: não se soma duas vezes.</p></section>

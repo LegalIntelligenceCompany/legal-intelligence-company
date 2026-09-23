@@ -2,6 +2,7 @@ import 'server-only';
 import type {createAdminClient} from './supabase/admin';
 import {quoteReservation, readResponseUsage, readTranscriptionUsage, responseCostNanoUsd, type ResponseUsage, type ExchangeSnapshot, type StageBudget} from './inference-cost';
 import {readLivePeriod} from './live-subscription';
+import {configuredReviewer} from './reviewer-catalogue';
 
 type Admin = NonNullable<ReturnType<typeof createAdminClient>>;
 export type MeterRequest = {id:string; actor_id:string; plan:StageBudget[]; exchange:ExchangeSnapshot; state:string; actual_cents:number|null; created_at:string};
@@ -24,15 +25,16 @@ export function commercialMeterEnabled() {
 function checked(error:{message?:string}|null) {
  if (error) throw Error(Object.keys(meterMessages).find(code=>error.message?.includes(code)) || 'METER_UNCONFIRMED');
 }
-export function meterConfiguration(service:MeterService) {
+export function meterConfiguration(service:MeterService|`review-${string}`) {
  try {
   const config=JSON.parse(process.env.AI_COMMERCIAL_TARIFFS_JSON || '');
   const plan=config[service] as StageBudget[];
   const advanced=service==='advanced';
+  const external=service.startsWith('review-')?configuredReviewer(service):null;
   const exchange=config.exchange as ExchangeSnapshot;
   if (!Array.isArray(plan)||plan.length!==(service==='analysis'?3:service==='transcription'?1:2)) throw Error();
   for(const stage of plan) {
-   if(!stage || typeof stage.tariff?.model!=='string' || !/^gpt-[a-zA-Z0-9.-]+$/.test(stage.tariff.model) ||
+   if(!stage || typeof stage.tariff?.model!=='string' || !/^(?:gpt|claude|gemini)-[a-zA-Z0-9.-]+$/.test(stage.tariff.model) ||
       stage.tariff.tier!=='default' || stage.maxOutput<1 || stage.maxOutput>12000 ||
       stage.maxWebSearchCalls<0 || stage.maxWebSearchCalls>2 || stage.maxInput<1 ||
       stage.tariff.inputNanoUsd<=0 || stage.tariff.outputNanoUsd<=0 ||
@@ -41,7 +43,9 @@ export function meterConfiguration(service:MeterService) {
   // A tariff snapshot must explicitly attest the aggregate provider input bound.
   // Never infer a safe ceiling from a prompt's character count.
   if(config.providerInputBoundsReviewed!==true) throw Error();
-  if(service==='economical'||advanced) {
+  if(external){
+   if(plan[0].tariff.model!=='gpt-5-mini'||plan[0].maxWebSearchCalls!==2||plan[1].tariff.model!==external.model||plan[1].maxWebSearchCalls!==0)throw Error();
+  } else if(service==='economical'||advanced) {
    if(plan[0].maxWebSearchCalls!==2 || plan[1].maxWebSearchCalls!==(advanced?0:2))throw Error();
    if(!/^gpt-5-mini(?:-\d{4}-\d{2}-\d{2})?$/.test(plan[0].tariff.model)||
      !(advanced?/^gpt-6-astra(?:-\d{4}-\d{2}-\d{2})?$/:/^gpt-5-mini(?:-\d{4}-\d{2}-\d{2})?$/).test(plan[1].tariff.model))throw Error();
@@ -59,7 +63,9 @@ export function meterConfiguration(service:MeterService) {
 }
 export async function commercialFundingInfo(db:Admin,actor:string) {
  const wallets=await commercialWallets(db,actor);
- return {mode:'commercial' as const,wallets,ceilings:{economical:meterConfiguration('economical').ceiling,advanced:meterConfiguration('advanced').ceiling}};
+ const ceilings:Partial<Record<MeterService,number>>={};
+ for(const service of ['economical','advanced'] as const){try{ceilings[service]=meterConfiguration(service).ceiling;}catch{/* One unavailable model must not disable every other model. */}}
+ return {mode:'commercial' as const,wallets,ceilings};
 }
 export async function commercialWallets(db:Admin,actor:string) {
  const result=await db.rpc('ai_meter_wallets',{p_actor:actor});checked(result.error);
@@ -70,7 +76,7 @@ export async function commercialWallets(db:Admin,actor:string) {
 export async function reserveCommercialResearch(db:Admin,actor:string,id:string,advanced:boolean,walletId?:unknown,maxDebitCents?:unknown) {
  return reserveCommercialService(db,actor,id,advanced?'advanced':'economical',walletId,maxDebitCents);
 }
-export async function reserveCommercialService(db:Admin,actor:string,id:string,service:MeterService,walletId?:unknown,maxDebitCents?:unknown) {
+export async function reserveCommercialService(db:Admin,actor:string,id:string,service:MeterService|`review-${string}`,walletId?:unknown,maxDebitCents?:unknown) {
  if(!commercialMeterEnabled())throw Error('METER_SETUP');
  const {plan,exchange,ceiling}=meterConfiguration(service);
  if(typeof maxDebitCents!=='number'||!Number.isSafeInteger(maxDebitCents)||maxDebitCents<ceiling||maxDebitCents>50000)throw Error('METER_QUOTE_CHANGED');

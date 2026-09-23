@@ -1,0 +1,19 @@
+import Link from 'next/link';
+import {AppShell} from '@/components/app-shell';
+import {createClient} from '@/lib/supabase/server';
+import {isBillingTester} from '@/lib/billing';
+import {reviewerCatalogue,reviewerKey} from '@/lib/reviewer-catalogue';
+import {meterConfiguration} from '@/lib/commercial-meter';
+export const dynamic='force-dynamic';
+export const metadata={title:'Modelos e fornecedores | LIC',robots:{index:false,follow:false}};
+export default async function Page(){
+ const client=await createClient();const user=(await client?.auth.getUser())?.data.user;
+ if(!user?.email_confirmed_at||!isBillingTester(user.email,(process.env.BILLING_TEST_EMAIL||'').trim().toLowerCase()))return <AppShell><h1>Configuração reservada</h1><Link href="/login?next=/setup/models">Entrar</Link></AppShell>;
+ let rows:ReturnType<typeof reviewerCatalogue>=[],invalid=false;try{rows=reviewerCatalogue();}catch{invalid=true;}
+ return <AppShell><div className="eyebrow">Sem chamadas de geração</div><h1>Modelos e fornecedores</h1>
+ <section className="card team-panel"><h2>Escolha do cliente</h2><p>Além dos motores OpenAI existentes, o chat aceita modelos de texto Claude e Gemini configurados pelo titular. A pesquisa das fontes continua em OpenAI; o modelo escolhido elabora e revê a resposta a partir desse material, sem consulta independente às fontes.</p><p>Não são todos os modelos existentes no mercado. O catálogo é extensível aos modelos compatíveis destes adaptadores. A presença na lista não prova acesso nem qualidade jurídica; nenhum modelo novo fica activo automaticamente.</p></section>
+ <section className="card team-panel"><h2>Estado por modelo</h2>{invalid?<p role="alert">AI_REVIEW_MODELS_JSON inválido. O catálogo adicional está bloqueado.</p>:<ul>{rows.map(row=>{let ready=false;try{meterConfiguration(row.id as `review-${string}`);ready=true;}catch{/* Fail closed */}return <li key={row.id}><strong>{row.label}</strong> · {row.model}<br/>Chave: {process.env[reviewerKey(row.provider)]?'configurada, acesso não verificado':'em falta'} · Compatibilidade: {row.validated?'declarada pelo titular':'por validar'} · Tarifas: {ready?'configuração aceite':'pendentes ou expiradas'}</li>;})}</ul>}</section>
+ <section className="card team-panel"><h2>O que fazer a seguir</h2><ol><li>Criar acesso API na <a href="https://platform.claude.com">Anthropic</a> e no <a href="https://aistudio.google.com/apikey">Google AI Studio</a>. Rever facturação e condições de tratamento de dados.</li><li>Na Vercel, no projecto, adicionar ANTHROPIC_API_KEY e GEMINI_API_KEY como segredos do servidor. Nunca usar NEXT_PUBLIC nem enviar chaves por chat.</li><li>Configurar AI_REVIEW_MODELS_JSON com id, label, provider (anthropic ou google), model (identificador exacto) e validated. Só marcar validated como true depois de validar compatibilidade e resposta com fontes.</li><li>Em AI_COMMERCIAL_TARIFFS_JSON, criar para cada id uma lista de duas etapas: pesquisa GPT-5 mini e revisão com o modelo exacto escolhido, sem ferramentas. Incluir tarifas, limites, validade e câmbio revistos. Não copiar preços de outro modelo.</li><li>Publicar e confirmar o estado nesta página. A escolha comercial continua dependente de subscrição, saldo, consentimento e activação comercial. O piloto de 10 € não autoriza estes novos fornecedores.</li></ol><p>Não é necessário novo SQL para esta integração, se a actualização 016 já foi executada. Sem configuração completa, não é iniciada uma pesquisa paga com estes modelos. Não há repetição automática de chamadas que falhem.</p></section>
+ <p>Documentação: <a href="https://platform.claude.com/docs/en/models/overview">Modelos Claude</a> · <a href="https://ai.google.dev/api/models">Modelos Gemini</a>. As versões exactas, tarifas e limites devem ser revistos antes da activação.</p><Link className="btn btn-secondary" href="/setup/tariffs">Tarifas e consumo</Link>
+ </AppShell>;
+}

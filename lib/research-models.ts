@@ -24,7 +24,7 @@ export function advancedReviewBody(input:AssistantInput,draft:AssistantResult){
   }}},
  };
 }
-export function advancedReviewResult(raw:unknown,draft:AssistantResult):AssistantResult{
+export function advancedReviewResult(raw:unknown,draft:AssistantResult,reviewer='GPT-6 Astra'):AssistantResult{
  const parsed=parseAssistantResponse(raw,false);let value;
  try{value=JSON.parse(parsed.text);}catch{throw Error('INCOMPLETE');}
  if(!Array.isArray(value.blocks)||!value.blocks.length||value.blocks.length>30)throw Error('INCOMPLETE');
@@ -39,6 +39,6 @@ export function advancedReviewResult(raw:unknown,draft:AssistantResult):Assistan
   text+='\n\n';
  }
  if(!citations.length||text.length>60000)throw Error('NO_SOURCES');
- text+='Limite da revisão: GPT-6 Astra reviu o material pesquisado por GPT-5 mini, sem voltar a consultar as fontes. Confirme as afirmações nos originais; esta revisão não equivale a validação por jurista.\n';
- return {text,citations,researched:true,generatedAt:new Date().toISOString(),review:'second-pass',model:'gpt-5-mini → gpt-6-astra'};
+ text+=`Limite da revisão: ${reviewer} reviu o material pesquisado por GPT-5 mini, sem voltar a consultar as fontes. Confirme as afirmações nos originais; esta revisão não equivale a validação por jurista.\n`;
+ return {text,citations,researched:true,generatedAt:new Date().toISOString(),review:'second-pass',model:`gpt-5-mini → ${reviewer==='GPT-6 Astra'?'gpt-6-astra':reviewer}`};
 }

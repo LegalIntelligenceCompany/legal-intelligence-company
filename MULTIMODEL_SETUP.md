@@ -1,0 +1,64 @@
+# Escolha de modelos: estado e activação
+
+Implementado: adaptadores de texto Anthropic Messages e Google Gemini generateContent,
+catálogo configurável, escolha no chat, revisão com fontes previamente pesquisadas,
+reserva pré-paga, comprovativos normalizados e recuperação sem nova geração.
+Não significa que todos os modelos existentes estejam integrados ou testados.
+As entradas sugeridas ficam desligadas. Não foram efectuados testes pagos.
+
+## Próximo passo do titular
+
+1. Publicar este commit e abrir `/setup/models`.
+2. Criar acesso API Anthropic e Google e rever facturação e tratamento de dados.
+3. Adicionar `ANTHROPIC_API_KEY` e `GEMINI_API_KEY` na Vercel como segredos
+   exclusivamente do servidor. Não enviar chaves por chat ou incluí-las no Git.
+4. Configurar `AI_REVIEW_MODELS_JSON`, inicialmente com `validated: false`:
+
+```json
+[
+  {"id":"review-sonnet","label":"Claude Sonnet","provider":"anthropic","model":"claude-sonnet-5","validated":false},
+  {"id":"review-gemini","label":"Gemini Flash","provider":"google","model":"gemini-3.8-flash","validated":false}
+]
+```
+
+Confirmar IDs exactos e capacidades na conta; aliases cuja versão devolvida difira
+da tarifa são recusados. Podem ser adicionadas outras entradas Claude/Gemini
+compatíveis (até 100); não se aceitam URLs ou fornecedores arbitrários.
+
+5. Em `AI_COMMERCIAL_TARIFFS_JSON`, cada id necessita de duas etapas com o mesmo
+   formato usado pelo contador existente: GPT-5 mini com pesquisa e modelo escolhido
+   sem ferramentas. As tarifas devem corresponder ao identificador exacto, tipo de
+   processamento, cache, escalão de contexto, limites e datas. Incluir câmbio
+   versionado. Não usar preços de outro modelo nem declarar limites revistos sem
+   os comprovar. Não há preços comerciais implícitos.
+6. Validar a integração e qualidade jurídica em ambiente controlado antes de
+   declarar `validated: true`. Isso é uma declaração do titular, não uma avaliação
+   automática. Testes reais adicionais exigem orçamento autorizado; este código
+   não utiliza nem aumenta o piloto de 10 € para outros fornecedores.
+7. A activação comercial permanece condicionada à aprovação de pagamentos,
+   termos/privacidade, tarifas, subscrição e saldo. Manter interruptores desligados
+   enquanto houver pendências. Não é necessário SQL adicional após a migração 016.
+
+## Limites desta versão
+
+- Pesquisa inicial continua em OpenAI; Claude/Gemini revêem o material, não voltam
+  a consultar fontes. A interface e a resposta declaram esta limitação.
+- Só perguntas públicas; o consentimento inclui o fornecedor da revisão.
+- A chamada de revisão é limitada a 25 segundos, após contagem de tokens; respostas
+  truncadas, cache-write, ferramentas inesperadas ou custos não confirmados não são
+  aceites silenciosamente. Um timeout pode ter custo: mantém-se a reserva para
+  reconciliação e não há repetição automática.
+- O modelo exacto fica fixado no plano reservado. Configuração alterada não troca
+  silenciosamente o modelo. Respostas já persistidas podem concluir o acerto sem
+  nova chamada ao fornecedor.
+- Não há troca automática para modelos recém-lançados, nem promessa de ausência
+  de alucinações. Os testes locais usam respostas sintéticas, não comprovam qualidade
+  de um modelo nem acesso API da conta.
+
+Documentação consultada em 23/09/2026:
+- https://platform.claude.com/docs/en/api/messages/create
+- https://platform.claude.com/docs/en/models/overview
+- https://platform.claude.com/docs/en/api/service-tiers
+- https://ai.google.dev/api/generate-content
+- https://ai.google.dev/api/tokens
+- https://ai.google.dev/api/models
