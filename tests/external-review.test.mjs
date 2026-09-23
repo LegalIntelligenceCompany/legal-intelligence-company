@@ -21,6 +21,26 @@ test('owner access check authenticates, rejects unknown models and never exposes
  const result=await action.verifyModelAccess('review-sonnet');assert.match(result,/Não foi possível/);assert.ok(!result.includes('secret-provider-detail'));
 });
 const api=load('../lib/external-review.ts',{'server-only':{},'./reviewer-catalogue':catalogue},{ANTHROPIC_API_KEY:'synthetic',GEMINI_API_KEY:'synthetic'});
+test('count-only diagnostic uses only count endpoint and never discloses raw provider messages',async()=>{
+ const previous=globalThis.fetch;let calls=0;
+ try{
+  for(const [status,body,expected] of [
+   [400,{error:{type:'invalid_request_error',message:'Your credit balance is too low. SECRET'}},/saldo insuficiente/],
+   [400,{error:{message:'SECRET'}},/formato ou os parâmetros/],
+   [401,{error:{message:'SECRET'}},/autenticação/],
+   [403,{},/recusou acesso/],[404,{},/não encontrou/],[429,{},/limite de pedidos/],[500,{},/indisponível/],
+   [200,{input_tokens:'SECRET'},/resposta inválida/],[200,{input_tokens:2001},/limite de entrada/]
+  ]){
+   calls=0;globalThis.fetch=async(url)=>{calls++;assert.equal(url,'https://api.anthropic.com/v1/messages/count_tokens');return Response.json(body,{status});};
+   await assert.rejects(api.countExternalReview({provider:'anthropic',model:'claude-fixture'},'system','prompt',{},2000),error=>{const message=api.countFailureMessage(error);assert.match(message,expected);assert.ok(!message.includes('SECRET'));assert.match(message,/Não foi enviado um pedido de geração/);return true;});assert.equal(calls,1);
+  }
+  globalThis.fetch=async()=>{throw new DOMException('SECRET','TimeoutError');};
+  await assert.rejects(api.countExternalReview({provider:'anthropic',model:'claude-fixture'},'s','p',{},2000),error=>/tempo de espera/.test(api.countFailureMessage(error)));
+  globalThis.fetch=async()=>Response.json({input_tokens:150});
+  assert.equal(await api.countExternalReview({provider:'anthropic',model:'claude-fixture'},'s','p',{},2000),150);
+  assert.equal(api.countFailureMessage(Error('SECRET')),null);
+ }finally{globalThis.fetch=previous;}
+});
 const claude={id:'msg_fixture',model:'claude-fixture',stop_reason:'end_turn',content:[{type:'text',text:'{"blocks":[]}'}],usage:{input_tokens:100,cache_read_input_tokens:20,cache_creation_input_tokens:0,output_tokens:30,service_tier:'standard'}};
 const gemini={responseId:'fixture',modelVersion:'gemini-fixture',candidates:[{finishReason:'STOP',content:{parts:[{text:'private reasoning',thought:true},{text:'{"blocks":[]}'}]}}],usageMetadata:{promptTokenCount:100,cachedContentTokenCount:20,candidatesTokenCount:30,thoughtsTokenCount:40,totalTokenCount:170}};
 test('catalogue is opt-in, bounded and rejects URLs, duplicate IDs and unknown providers',()=>{

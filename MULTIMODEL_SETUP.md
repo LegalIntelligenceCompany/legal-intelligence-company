@@ -8,6 +8,17 @@ As entradas sugeridas ficam desligadas. Não foram efectuados testes pagos.
 
 ## Teste único Sonnet autorizado em 23/09/2026
 
+Diagnóstico: `/setup/models` dispõe de «Diagnosticar contagem — sem geração».
+Consulta só `messages/count_tokens`, com o mesmo conteúdo fictício do teste.
+Não reserva saldo, não altera a tentativa anterior, não chama `messages` e não
+activa o modelo. Usa autenticação da conta piloto e não admite texto arbitrário.
+Apresenta categorias seguras e HTTP, nunca mensagens brutas do fornecedor/chaves.
+Saldo insuficiente só é identificado quando explicitamente indicado pela API;
+um HTTP 400 genérico não é interpretado como falta de saldo.
+O diagnóstico pontual não reconstitui a causa do erro antigo. Novas falhas de
+contagem do piloto guardam a etapa sem repor o orçamento ou permitir repetição.
+Não precisa de nova migração SQL.
+
 A página `/setup/models` inclui agora um teste separado com conteúdo fictício.
 Após publicar, execute apenas `017_claude_pilot.sql` pelo botão dessa secção.
 A migração não gera texto nem altera o limite de 10 €. O botão de execução

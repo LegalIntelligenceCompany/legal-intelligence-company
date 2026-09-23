@@ -1,5 +1,5 @@
 import 'server-only';
-import {checkExternalModel,externalReview} from './external-review';
+import {checkExternalModel,externalReview,countExternalReview,countFailureMessage} from './external-review';
 import {pilotAccount,pilotEnabled,PILOT_EXPIRES} from './ai-pilot';
 import type {createAdminClient} from './supabase/admin';
 
@@ -8,6 +8,12 @@ const model={id:'review-sonnet',label:'Claude Sonnet',provider:'anthropic' as co
 const instructions='Responde em português de Portugal. Este é um teste com documentos inteiramente fictícios, não legislação. Usa apenas o material fornecido, sem inventar fontes. Assinala expressamente a contradição entre os documentos e que não é possível determinar qual prevalece.';
 const prompt='Documento fictício A [A]: O prazo de resposta é de dez dias. Documento fictício B [B]: O prazo de resposta é de vinte dias. Resume o problema em até 100 palavras, cita ambos os identificadores e não resolvas a contradição sem fundamento.';
 const schema={type:'object',properties:{answer:{type:'string'}},required:['answer'],additionalProperties:false};
+export async function diagnoseClaudeCount(){
+ try{
+  const tokens=await countExternalReview(model,instructions,prompt,schema,2000);
+  return `Contagem concluída: ${tokens} tokens de entrada (limite: 2 000). Não foi gerada uma resposta nem alterado o orçamento. Este resultado descreve o estado actual; não recupera o erro antigo nem aprova a geração.`;
+ }catch(error){return countFailureMessage(error)||'Não foi possível concluir o diagnóstico. Não foi enviada geração nem alterado o orçamento.';}
+}
 export async function runClaudePilot(admin:NonNullable<ReturnType<typeof createAdminClient>>,user:{id:string;email?:string;email_confirmed_at?:string|null},consent:boolean){
  if(!pilotAccount(user)||!consent)throw Error('PILOT_FORBIDDEN');
  if(!pilotEnabled()||process.env.AI_EXECUTION_ENABLED!=='true'||!process.env.ANTHROPIC_API_KEY)throw Error('PILOT_SETUP');
@@ -32,8 +38,9 @@ export async function runClaudePilot(admin:NonNullable<ReturnType<typeof createA
   const saved=await admin.from('ai_claude_pilot').update({status:'completed',result:{answer:parsed.answer,model:raw.model,usage:raw.usage,providerResponseId:raw.id}}).eq('singleton',true).eq('owner_id',user.id).select('status').single();
   if(saved.error||saved.data?.status!=='completed')throw Error('SAVE');
   return 'Resposta recebida e guardada. O teste técnico não aprova qualidade jurídica nem activa o modelo. A reserva de 1 € mantém-se no orçamento; não é o custo facturado.';
- }catch{
-  await admin.from('ai_claude_pilot').update({status:'uncertain'}).eq('singleton',true).eq('owner_id',user.id).eq('status','reserved');
+ }catch(error){
+  const diagnostic=countFailureMessage(error);
+  await admin.from('ai_claude_pilot').update({status:'uncertain',...(diagnostic?{result:{diagnostic,stage:'count_tokens',generationStarted:false}}:{})}).eq('singleton',true).eq('owner_id',user.id).eq('status','reserved');
   throw Error('CLAUDE_UNCERTAIN');
  }
 }

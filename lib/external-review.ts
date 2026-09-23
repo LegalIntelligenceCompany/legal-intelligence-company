@@ -4,6 +4,27 @@ import {reviewerKey} from './reviewer-catalogue';
 // Text-only, no tools, no cache writes, no automatic retry or provider fallback.
 type Raw=Record<string,any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 const count=(v:unknown)=>{if(typeof v!=='number'||!Number.isSafeInteger(v)||v<0)throw Error('METER_UNCONFIRMED');return v;};
+const countReasons={
+ key:'Chave do fornecedor em falta.',
+ authentication:'O fornecedor rejeitou a autenticação. Verifique a chave.',
+ permission:'O fornecedor recusou acesso a esta operação.',
+ billing:'O fornecedor indicou saldo insuficiente na conta API.',
+ model:'O fornecedor não encontrou o modelo ou a operação.',
+ rate:'O fornecedor indicou limite de pedidos. Não houve repetição automática.',
+ request:'O fornecedor rejeitou o formato ou os parâmetros da contagem.',
+ unavailable:'O fornecedor está indisponível para a contagem.',
+ timeout:'A contagem excedeu o tempo de espera.',
+ network:'Não foi possível concluir a ligação para contar tokens.',
+ response:'A contagem devolveu uma resposta inválida ou incompleta.',
+ ceiling:'A contagem ultrapassou o limite de entrada autorizado.',
+};
+class CountFailure extends Error{
+ constructor(readonly reason:keyof typeof countReasons,readonly status?:number){super(reason==='ceiling'?'METER_CEILING':'COUNT_FAILED');}
+}
+export function countFailureMessage(error:unknown):string|null{
+ if(!(error instanceof CountFailure))return null;
+ return `Etapa: contagem de tokens${error.status?` (HTTP ${error.status})`:''}. ${countReasons[error.reason]} Não foi enviado um pedido de geração.`;
+}
 export async function checkExternalModel(reviewer:Reviewer){
  const key=process.env[reviewerKey(reviewer.provider)];if(!key)throw Error('MODEL_UNAVAILABLE');
  const anthropic=reviewer.provider==='anthropic';
@@ -42,17 +63,35 @@ export function normaliseExternalReview(provider:Reviewer['provider'],model:stri
   usage:{input_tokens:input,input_tokens_details:{cached_tokens:cached},output_tokens:output,output_tokens_details:{reasoning_tokens:reasoning},total_tokens:input+output},
   output:[{type:'message',role:'assistant',content:[{type:'output_text',text,annotations:[]}]}]};
 }
-export async function externalReview(reviewer:Reviewer,instructions:string,prompt:string,schema:unknown,maxInput:number,maxOutput:number){
- const key=process.env[reviewerKey(reviewer.provider)];if(!key)throw Error('MODEL_UNAVAILABLE');
+async function prepareCount(reviewer:Reviewer,instructions:string,prompt:string,schema:unknown,maxInput:number){
+ const key=process.env[reviewerKey(reviewer.provider)];if(!key)throw new CountFailure('key');
  // Count actual text using the selected provider before sending a paid request.
  const anthropic=reviewer.provider==='anthropic';
  const headers:Record<string,string>={'Content-Type':'application/json',...(anthropic?{'x-api-key':key,'anthropic-version':'2023-06-01'}:{'x-goog-api-key':key})};
  const base=anthropic?'https://api.anthropic.com/v1/messages':'https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(reviewer.model);
  const system=instructions+'\nDevolve apenas JSON válido conforme este esquema: '+JSON.stringify(schema);
  const content=anthropic?{model:reviewer.model,system,messages:[{role:'user',content:prompt}]}:{systemInstruction:{parts:[{text:system}]},contents:[{role:'user',parts:[{text:prompt}]}]};
- const counted=await fetch(anthropic?base+'/count_tokens':base+':countTokens',{method:'POST',headers,body:JSON.stringify(anthropic?content:{generateContentRequest:{...content,model:'models/'+reviewer.model}}),redirect:'error',signal:AbortSignal.timeout(5000)});
- if(!counted.ok)throw Error('MODEL_UNAVAILABLE');const tokens=await counted.json();
- if(count(anthropic?tokens.input_tokens:tokens.totalTokens)>maxInput)throw Error('METER_CEILING');
+ let counted:Response;
+ try{counted=await fetch(anthropic?base+'/count_tokens':base+':countTokens',{method:'POST',headers,body:JSON.stringify(anthropic?content:{generateContentRequest:{...content,model:'models/'+reviewer.model}}),redirect:'error',signal:AbortSignal.timeout(5000)});}
+ catch(error){throw new CountFailure(error instanceof Error&&['AbortError','TimeoutError'].includes(error.name)?'timeout':'network');}
+ if(!counted.ok){
+  let billing=false;
+  // Never expose provider messages, headers, prompts or credentials to the client.
+  try{const body=await counted.json();billing=anthropic&&counted.status===400&&body?.error?.type==='invalid_request_error'&&typeof body.error.message==='string'&&/credit balance is too low|insufficient credits/i.test(body.error.message);}catch{/* Generic HTTP classification only. */}
+  const reason=billing?'billing':counted.status===401?'authentication':counted.status===403?'permission':counted.status===404?'model':counted.status===429?'rate':counted.status>=500?'unavailable':'request';
+  throw new CountFailure(reason,counted.status);
+ }
+ let inputTokens:number;
+ try{const tokens=await counted.json();inputTokens=count(anthropic?tokens.input_tokens:tokens.totalTokens);}catch{throw new CountFailure('response',counted.status);}
+ if(inputTokens>maxInput)throw new CountFailure('ceiling');
+ return {anthropic,base,headers,content,inputTokens};
+}
+// Count-only path cannot reach a generation endpoint or a budget mutation.
+export async function countExternalReview(reviewer:Reviewer,instructions:string,prompt:string,schema:unknown,maxInput:number){
+ return (await prepareCount(reviewer,instructions,prompt,schema,maxInput)).inputTokens;
+}
+export async function externalReview(reviewer:Reviewer,instructions:string,prompt:string,schema:unknown,maxInput:number,maxOutput:number){
+ const {anthropic,base,headers,content}=await prepareCount(reviewer,instructions,prompt,schema,maxInput);
  const body=anthropic?{...content,max_tokens:maxOutput,stream:false,service_tier:'standard_only'}:{...content,generationConfig:{maxOutputTokens:maxOutput,candidateCount:1,responseMimeType:'application/json'}};
  const response=await fetch(anthropic?base:base+':generateContent',{method:'POST',headers,body:JSON.stringify(body),redirect:'error',signal:AbortSignal.timeout(25000)});
  if(!response.ok)throw Error('PROVIDER');

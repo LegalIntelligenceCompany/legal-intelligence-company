@@ -1,8 +1,13 @@
 'use server';
 import {createClient} from '@/lib/supabase/server';
 import {createAdminClient} from '@/lib/supabase/admin';
-import {runClaudePilot} from '@/lib/claude-pilot';
-import {pilotMessages} from '@/lib/ai-pilot';
+import {runClaudePilot,diagnoseClaudeCount} from '@/lib/claude-pilot';
+import {pilotMessages,pilotAccount} from '@/lib/ai-pilot';
+export async function diagnoseClaude(){
+ const client=await createClient();const user=(await client?.auth.getUser())?.data.user;
+ if(!pilotAccount(user))return 'Diagnóstico reservado à conta de teste com e-mail confirmado.';
+ return diagnoseClaudeCount();
+}
 export async function testClaude(consent:boolean){
  try{
   const client=await createClient();const user=(await client?.auth.getUser())?.data.user;
