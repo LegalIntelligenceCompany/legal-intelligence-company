@@ -6,6 +6,29 @@ reserva pré-paga, comprovativos normalizados e recuperação sem nova geração
 Não significa que todos os modelos existentes estejam integrados ou testados.
 As entradas sugeridas ficam desligadas. Não foram efectuados testes pagos.
 
+## Teste único Sonnet autorizado em 23/09/2026
+
+A página `/setup/models` inclui agora um teste separado com conteúdo fictício.
+Após publicar, execute apenas `017_claude_pilot.sql` pelo botão dessa secção.
+A migração não gera texto nem altera o limite de 10 €. O botão de execução
+exige consentimento e reserva atomicamente 100 cêntimos no orçamento existente.
+Só há uma tentativa durante toda a vida desta instalação; recarregar, executar
+o SQL novamente ou mudar o identificador do pedido não permite repetir.
+
+Usa exclusivamente `claude-sonnet-5`, com no máximo 2 000 tokens de entrada e
+600 de saída, sem ferramentas, sem pesquisa OpenAI e sem dados de clientes.
+Tarifa de referência consultada em 23/09/2026: $2/$10 por milhão, máximo base
+de $0,01 nestes limites; a reserva conservadora é 1 €, não uma factura nem
+uma conversão cambial exacta. Expira com o piloto em 29/09/2026.
+Fonte: https://platform.claude.com/docs/en/about-claude/pricing
+
+A resposta e contagens ficam guardadas para o titular. Falhas, timeout e perda
+de ligação mantêm a reserva; não há repetição automática. O teste avalia somente
+uma resposta técnica com material fictício, não qualidade jurídica, pesquisa
+completa nem todos os modelos Claude. Não altera `validated`, tarifas comerciais
+ou interruptores de pagamentos. A autorização adicional cobre somente este teste
+Sonnet, não os restantes fornecedores/modelos.
+
 ## Próximo passo do titular
 
 1. Publicar este commit e abrir `/setup/models`.
