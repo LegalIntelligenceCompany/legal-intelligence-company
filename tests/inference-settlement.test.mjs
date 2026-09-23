@@ -18,7 +18,7 @@ function fixture(){
 test('reserve, invoke, record, settle occur in order before result',async()=>{
  const {options,calls}=fixture();const result=await executeMeteredRequest(options);
  assert.deepEqual(calls.map(c=>c[0]),['reserve','invoke','record','settle']);
- assert.equal(calls[0][1].ceilingCents,6);assert.equal(result.cost.customerBaseCents,1);assert.equal(result.result,1);
+ assert.equal(calls[0][1].ceilingCents,7);assert.equal(result.cost.customerBaseCents,1);assert.equal(result.result,1);
 });
 test('fictitious credits cannot fund live calls',async()=>{
  const {options,calls}=fixture();options.providerEnvironment='live';

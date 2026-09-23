@@ -34,6 +34,7 @@ async function accessPrice(wallet:Wallet){
  return id;
 }
 export async function liveCheckout(db:DB,actor:{id:string;email?:string},walletId:string,requestId:string,kind:'access'|'credits',amount:number){
+ if(kind==='credits'&&![2000,5000,10000].includes(amount))throw Error('INVALID');
  const config=liveCreditConfig();let wallet=await ownedLiveWallet(db,actor.id,walletId);if(wallet.frozen)throw Error('METER_FORBIDDEN');
  if(kind==='access'&&wallet.live_subscription){
   const sub=await liveStripe(`subscriptions/${wallet.live_subscription}`);
@@ -59,7 +60,7 @@ export async function liveCheckout(db:DB,actor:{id:string;email?:string},walletI
    }else requestId=old.id;
   }
  }
- const created=await db.rpc('ai_credit_order',{p_actor:actor.id,p_wallet:wallet.id,p_id:requestId,p_kind:kind,p_amount:kind==='access'?(wallet.organization_id?9900:4900):amount});liveDb(created.error);
+ const created=await db.rpc('ai_credit_order_v2',{p_actor:actor.id,p_wallet:wallet.id,p_id:requestId,p_kind:kind,p_amount:kind==='access'?(wallet.organization_id?9900:4900):amount});liveDb(created.error);
  const order=created.data as Order;if(!order?.id||order.closed||order.fulfilled)throw Error('METER_CONFLICT');
  if(order.session_id){const s=await liveStripe(`checkout/sessions/${order.session_id}`);if(s.livemode!==true||s.status!=='open'||s.metadata?.lic_live_order!==order.id)throw Error('METER_CONFLICT');return {url:safeCheckoutURL(s.url)};}
  if(Date.now()-Date.parse(order.created_at)>23*3600000)throw Error('METER_UNCONFIRMED');

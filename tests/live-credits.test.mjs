@@ -6,6 +6,10 @@ import ts from 'typescript';
 function load(file,deps={},env={}){const out={};const js=ts.transpileModule(readFileSync(new URL(file,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;new Function('require','exports','process',js)(id=>{if(!(id in deps))throw Error(id);return deps[id];},out,{env});return out;}
 const deps={'server-only':{},'./billing':{},'./live-subscription':{}};
 const api=load('../lib/live-credits.ts',deps);
+test('unsupported top-ups are rejected before database or provider access',async()=>{
+ for(const amount of [0,100,1999,2001,50000,NaN,Infinity,'2000'])await assert.rejects(api.liveCheckout(null,{id:'actor'},'wallet','request','credits',amount),/^Error: INVALID$/);
+ for(const amount of [2000,5000,10000])await assert.rejects(api.liveCheckout(null,{id:'actor'},'wallet','request','credits',amount),/LIVE_DISABLED/);
+});
 test('live top-up needs matching paid live order, exact principal, tax and non-refunded charge',()=>{
  const order={id:'order',amount_cents:1000},wallet={id:'wallet',live_customer:'cus_one'};
  const charge={livemode:true,paid:true,customer:'cus_one',currency:'eur',amount_captured:1230,amount_refunded:0,disputed:false};

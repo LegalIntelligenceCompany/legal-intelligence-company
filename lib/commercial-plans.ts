@@ -6,7 +6,7 @@ export const commercialConsumptionPolicy = {
   subscriptionPurpose: 'platform_access',
   includedAICredits: 0,
   consumptionPayment: 'prepaid_separately',
-  providerCostMultiplier: 3,
+  providerCostMultiplier: 3.5,
   allowNegativeBalance: false,
   automaticTopUp: false,
   commercialInferenceEnabled: false,
@@ -18,8 +18,8 @@ export function quoteAIConsumption(providerCostEuroMicros: number) {
   if (!Number.isSafeInteger(providerCostEuroMicros) || providerCostEuroMicros < 0) {
     throw Error('INVALID_PROVIDER_COST');
   }
-  const markedUp = BigInt(providerCostEuroMicros) * BigInt(commercialConsumptionPolicy.providerCostMultiplier);
-  const customerBaseCents = Number((markedUp + BigInt(9999)) / BigInt(10000));
+  const markedUp = BigInt(providerCostEuroMicros) * BigInt(7);
+  const customerBaseCents = Number((markedUp + BigInt(19999)) / BigInt(20000));
   return { providerCostEuroMicros, customerBaseCents, currency: 'eur' as const, taxIncluded: false as const };
 }
 export const commercialPlans = [

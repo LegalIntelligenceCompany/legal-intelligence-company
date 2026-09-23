@@ -13,7 +13,7 @@ test('counts full output once, cache discount, and each completed search call',(
  const usage=api.readResponseUsage(raw());assert.equal(usage.output,100);assert.equal(usage.webSearchCalls,1);
  assert.equal(api.responseCostNanoUsd(usage,tariff,at),10_405_000n);
  const quote=api.quoteMeteredRequest([{usage,tariff,startedAt:at}],fx,at);
- assert.equal(quote.customerBaseCents,3);assert.equal(quote.providerCostEuroMicros,9365);
+ assert.equal(quote.customerBaseCents,4);assert.equal(quote.providerCostEuroMicros,9365);
  assert.equal(quote.taxIncluded,false);
 });
 test('terminal incomplete output can cost money; pending or missing usage is not zero cost',()=>{
@@ -42,7 +42,7 @@ test('sums stages before rounding and refuses duplicate receipts',()=>{
 });
 test('worst-case reservation ignores cache discounts and covers all stages',()=>{
  const stages=[{tariff,maxInput:100000,maxOutput:12000,maxWebSearchCalls:2},{tariff,maxInput:100000,maxOutput:12000,maxWebSearchCalls:2}];
- assert.equal(api.quoteReservation(stages,fx,at).customerBaseCents,38);
+ assert.equal(api.quoteReservation(stages,fx,at).customerBaseCents,44);
  assert.throws(()=>api.quoteReservation([{...stages[0],maxInput:100001}],fx,at),/CONTEXT_PRICE_UNCONFIRMED/);
 });
 test('audio receipts price audio separately and reserve at the higher input rate',()=>{
@@ -52,7 +52,7 @@ test('audio receipts price audio separately and reserve at the higher input rate
  assert.equal(api.responseCostNanoUsd(usage,audioTariff,at),492500n);
  assert.throws(()=>api.responseCostNanoUsd(usage,tariff,at),/USAGE_UNCONFIRMED/);
  const quote=api.quoteReservation([{tariff:audioTariff,maxInput:100000,maxOutput:100,maxWebSearchCalls:0}],fx,at);
- assert.equal(quote.customerBaseCents,136);
+ assert.equal(quote.customerBaseCents,158);
  assert.throws(()=>api.readTranscriptionUsage(raw,'invented','fixture-model'),/USAGE_UNCONFIRMED/);
  assert.throws(()=>api.readTranscriptionUsage({usage:{...raw.usage,input_tokens:101}},'req_audio','fixture-model'),/USAGE_UNCONFIRMED/);
  assert.throws(()=>api.readTranscriptionUsage({usage:{...raw.usage,type:'duration'}},'req_audio','fixture-model'),/USAGE_UNCONFIRMED/);

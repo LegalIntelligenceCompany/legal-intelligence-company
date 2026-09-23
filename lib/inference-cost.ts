@@ -110,7 +110,7 @@ export function quoteMeteredRequest(
   const numerator = nanoUsd * BigInt(positive(exchange.eurNumerator));
   const denominator = BigInt(positive(exchange.usdDenominator));
   // Keep exact precision across models, tools and FX. Round only the final debit.
-  const customerBaseCents = safe(ceil(numerator * BigInt(3), denominator * BigInt(10_000_000)));
+  const customerBaseCents = safe(ceil(numerator * BigInt(7), denominator * BigInt(20_000_000)));
   return {providerCostNanoUsd: nanoUsd.toString(), exchangeId: exchange.id,
     providerCostEuroMicros: safe(ceil(numerator, denominator * BigInt(1000))),
     customerBaseCents, currency: 'eur' as const, taxIncluded: false as const,

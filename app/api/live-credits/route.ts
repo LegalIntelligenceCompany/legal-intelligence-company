@@ -43,7 +43,7 @@ export async function POST(request:Request){try{
  if(b.action==='seat'){if(!uuid(b.memberId)||typeof b.add!=='boolean')throw Error('INVALID');const r=await db.rpc('ai_credit_member',{p_actor:user.id,p_wallet:b.walletId,p_member:b.memberId,p_add:b.add});liveDb(r.error);return json({saved:true});}
  if(b.action==='checkout'){
   if(b.terms!==config.terms)throw Error('TERMS');
-  if(!uuid(b.requestId)||!['access','credits'].includes(b.kind)||(b.kind==='credits'&&(!Number.isSafeInteger(b.amountCents)||b.amountCents<100||b.amountCents>50000)))throw Error('INVALID');
+  if(!uuid(b.requestId)||!['access','credits'].includes(b.kind)||(b.kind==='credits'&&![2000,5000,10000].includes(b.amountCents)))throw Error('INVALID');
   return json(await liveCheckout(db,{id:user.id,email:user.email},b.walletId,b.requestId,b.kind,b.amountCents));
  }
  throw Error('INVALID');

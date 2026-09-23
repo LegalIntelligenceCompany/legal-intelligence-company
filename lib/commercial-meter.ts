@@ -84,7 +84,7 @@ export async function reserveCommercialService(db:Admin,actor:string,id:string,s
   .eq('live_subscription',stored.data.live_subscription).eq('live_customer',stored.data.live_customer).select('id').single();
  if(refreshed.error||!refreshed.data)throw Error('METER_UNCONFIRMED');
  // SQL rechecks current membership under the wallet lock, not just this list.
- const reserved=await db.rpc('ai_meter_reserve',{p_actor:actor,p_wallet:selected.id,p_id:id,p_ceiling:ceiling,p_plan:plan,p_exchange:exchange});
+ const reserved=await db.rpc('ai_meter_reserve_v2',{p_actor:actor,p_wallet:selected.id,p_id:id,p_ceiling:ceiling,p_plan:plan,p_exchange:exchange});
  checked(reserved.error);if(reserved.data!==true)throw Error('METER_UNCONFIRMED');
  return loadCommercialResearch(db,actor,id);
 }

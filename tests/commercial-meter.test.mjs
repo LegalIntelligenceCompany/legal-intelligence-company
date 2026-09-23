@@ -22,12 +22,12 @@ function setup(patch={}){
  const config={providerInputBoundsReviewed:true,economical:[stage,stage],advanced:[stage,{...stage,tariff:{...tariff,model:'gpt-6-astra'},maxWebSearchCalls:0}],document:[privateStage,privateStage],'assistant-research':[stage,stage],analysis:[privateStage,stage,privateStage],transcription:[{...privateStage,tariff:{...tariff,model:'gpt-4o-mini-transcribe',audioInputNanoUsd:5000}}],exchange};
  const api=load('../lib/commercial-meter.ts',{'server-only':{},'./inference-cost':cost,'./live-subscription':{readLivePeriod:async()=>{calls.push('stripe-read');return new Date(Date.now()+86400000).toISOString();}}},{AI_COMMERCIAL_ENABLED:'true',STRIPE_SECRET_KEY:'sk_live_fixture',AI_COMMERCIAL_TARIFFS_JSON:JSON.stringify(config),...patch});
  let meter;
- const db={rpc:async(name,args)=>{calls.push(name);if(name==='ai_meter_wallets')return {data:[{id:'wallet',availableCents:1000,active:true,frozen:false}]};if(name==='ai_meter_reserve')meter={id:args.p_id,actor_id:args.p_actor,plan:args.p_plan,exchange:args.p_exchange,created_at:new Date().toISOString(),state:'reserved'};return {data:name==='ai_meter_settle'?1:true};},from(table){let updating=false;const q={select(){return q;},eq(){return q;},update(){updating=true;return q;},async single(){return {data:table==='ai_meter_requests'?meter:updating?{id:'wallet'}:{live_customer:'cus_one',live_subscription:'sub_one',organization_id:null}};}};return q;}};
+ const db={rpc:async(name,args)=>{calls.push(name);if(name==='ai_meter_wallets')return {data:[{id:'wallet',availableCents:1000,active:true,frozen:false}]};if(name==='ai_meter_reserve_v2')meter={id:args.p_id,actor_id:args.p_actor,plan:args.p_plan,exchange:args.p_exchange,created_at:new Date().toISOString(),state:'reserved'};return {data:name==='ai_meter_settle'?1:true};},from(table){let updating=false;const q={select(){return q;},eq(){return q;},update(){updating=true;return q;},async single(){return {data:table==='ai_meter_requests'?meter:updating?{id:'wallet'}:{live_customer:'cus_one',live_subscription:'sub_one',organization_id:null}};}};return q;}};
  return {api,db,calls};
 }
 test('commercial adapter checks Stripe then reserves, persists provider usage and settles',async()=>{
  const {api,db,calls}=setup();const meter=await api.reserveCommercialResearch(db,'actor','request',false,'wallet',100);
- assert.ok(calls.indexOf('stripe-read')<calls.indexOf('ai_meter_reserve'));
+ assert.ok(calls.indexOf('stripe-read')<calls.indexOf('ai_meter_reserve_v2'));
  const body=api.meteredResearchBody(meter,0,{model:'untrusted',max_output_tokens:90000});assert.equal(body.max_output_tokens,1000);assert.equal(body.model,'gpt-5-mini');assert.equal(body.truncation,'disabled');
  const raw={id:'resp_one',model:'gpt-5-mini',service_tier:'default',status:'completed',usage:{input_tokens:100,input_tokens_details:{cached_tokens:0},output_tokens:100,output_tokens_details:{reasoning_tokens:10},total_tokens:200},output:[]};
  await api.recordCommercialResearch(db,'actor',meter,0,raw);assert.ok(calls.includes('ai_meter_record'));
@@ -39,12 +39,12 @@ test('test keys, missing tariffs, missing approval and wallet mismatch cannot re
  await assert.rejects(sandbox.api.reserveCommercialResearch(sandbox.db,'actor','request',false,'wallet',100),/METER_SETUP/);assert.deepEqual(sandbox.calls,[]);
  const missing=setup({AI_COMMERCIAL_TARIFFS_JSON:''});await assert.rejects(missing.api.reserveCommercialResearch(missing.db,'actor','request',false,'wallet',100),/METER_SETUP/);
  const s=setup();await assert.rejects(s.api.reserveCommercialResearch(s.db,'actor','request',false,'wallet',0),/METER_QUOTE_CHANGED/);assert.deepEqual(s.calls,[]);
- await assert.rejects(s.api.reserveCommercialResearch(s.db,'actor','request',false,'somebody-else',100),/METER_FORBIDDEN/);assert.ok(!s.calls.includes('ai_meter_reserve'));
+ await assert.rejects(s.api.reserveCommercialResearch(s.db,'actor','request',false,'somebody-else',100),/METER_FORBIDDEN/);assert.ok(!s.calls.includes('ai_meter_reserve_v2'));
 });
 test('each service reserves its complete plan; private stages cannot gain web tools',async()=>{
  for(const [service,length] of [['document',2],['assistant-research',2],['analysis',3],['transcription',1]]){
   const {api,db,calls}=setup();const meter=await api.reserveCommercialService(db,'actor','request',service,'wallet',500);
-  assert.equal(meter.plan.length,length);assert.equal(calls.filter(c=>c==='ai_meter_reserve').length,1);
+  assert.equal(meter.plan.length,length);assert.equal(calls.filter(c=>c==='ai_meter_reserve_v2').length,1);
   if(service!=='assistant-research')assert.throws(()=>api.meteredResearchBody(meter,0,{tools:[{type:'web_search'}]}),/METER_SETUP/);
   if(service==='transcription')await api.recordCommercialAudio(db,'actor',meter,{usage:{type:'tokens',input_tokens:10,input_token_details:{audio_tokens:9,text_tokens:1},output_tokens:1,total_tokens:11}},'req_test');
  }

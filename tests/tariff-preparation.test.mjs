@@ -9,7 +9,7 @@ const xml=(date='2026-09-23',rate='1.1411')=>`<Envelope><Cube><Cube time="${date
 test('ECB reference is inverted exactly, with source date, without assuming parity',()=>{
  const fx=api.parseReferenceExchange(xml(),now);
  assert.deepEqual(fx,{date:'2026-09-23',usdPerEuro:'1.1411',eurNumerator:10000,usdDenominator:11411});
- assert.equal(api.simulateProviderCost('0,10',fx).customerCents,27);
+ assert.equal(api.simulateProviderCost('0,10',fx).customerCents,31);
  assert.equal(api.simulateProviderCost('0',fx).customerCents,0);
  assert.equal(api.simulateProviderCost('0.000001',fx).customerCents,1);
 });
@@ -25,7 +25,7 @@ test('simulation cannot accept negative, malformed or non-finite amounts',()=>{
 test('simulation rounds only the aggregate final debit',()=>{
  const fx={date:'2026-09-23',usdPerEuro:'2',eurNumerator:1,usdDenominator:2};
  assert.equal(api.simulateProviderCost('0.01',fx).customerCents,2);
- assert.equal(api.simulateProviderCost('1',fx).customerCents,150);
+ assert.equal(api.simulateProviderCost('1',fx).customerCents,175);
 });
 test('reference fetch failure and stale data return null; fresh data is accepted',async()=>{
  const original=globalThis.fetch;

@@ -33,7 +33,7 @@ export function simulateProviderCost(usd:string,exchange:ReferenceExchange) {
   const [whole,fraction='']=value.split('.');
   const micros=BigInt(whole)*BigInt(1_000_000)+BigInt(fraction.padEnd(6,'0'));
   const numerator=micros*BigInt(exchange.eurNumerator),denominator=BigInt(exchange.usdDenominator)*BigInt(10_000);
-  const customerCents=Number((numerator*BigInt(3)+denominator-BigInt(1))/denominator);
+  const customerCents=Number((numerator*BigInt(7)+denominator*BigInt(2)-BigInt(1))/(denominator*BigInt(2)));
   if(!Number.isSafeInteger(customerCents))throw Error('SIMULATION_INVALID');
   return {customerCents,providerEuro:Number(numerator)/Number(BigInt(exchange.usdDenominator)*BigInt(1_000_000))};
 }
