@@ -4,6 +4,22 @@ import {readFileSync} from 'node:fs';
 import ts from 'typescript';
 function load(file,deps={},env={}){const out={};const js=ts.transpileModule(readFileSync(new URL(file,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;new Function('require','exports','process',js)(id=>{if(!(id in deps))throw Error(id);return deps[id];},out,{env});return out;}
 const catalogue=load('../lib/reviewer-catalogue.ts');
+test('owner access check authenticates, rejects unknown models and never exposes provider errors',async()=>{
+ let calls=0;let user={email:'owner@example.test',email_confirmed_at:'today'};let fail=false;
+ const deps={
+  '@/lib/supabase/server':{createClient:async()=>({auth:{getUser:async()=>({data:{user}})}})},
+  '@/lib/billing':{isBillingTester:(email,expected)=>email===expected},
+  '@/lib/reviewer-catalogue':{reviewerCatalogue:()=>[{id:'review-sonnet',provider:'anthropic'}],reviewerKey:()=> 'ANTHROPIC_API_KEY'},
+  '@/lib/external-review':{checkExternalModel:async()=>{calls++;if(fail)throw Error('secret-provider-detail');}}
+ };
+ const action=load('../app/setup/models/actions.ts',deps,{BILLING_TEST_EMAIL:'owner@example.test',ANTHROPIC_API_KEY:'synthetic'});
+ assert.match(await action.verifyModelAccess('review-sonnet'),/Acesso confirmado/);assert.equal(calls,1);
+ assert.match(await action.verifyModelAccess('unknown'),/não configurados/);assert.equal(calls,1);
+ user=null;assert.match(await action.verifyModelAccess('review-sonnet'),/reservada/);assert.equal(calls,1);
+ user={email:'other@example.test',email_confirmed_at:'today'};await action.verifyModelAccess('review-sonnet');assert.equal(calls,1);
+ user={email:'owner@example.test',email_confirmed_at:'today'};fail=true;
+ const result=await action.verifyModelAccess('review-sonnet');assert.match(result,/Não foi possível/);assert.ok(!result.includes('secret-provider-detail'));
+});
 const api=load('../lib/external-review.ts',{'server-only':{},'./reviewer-catalogue':catalogue},{ANTHROPIC_API_KEY:'synthetic',GEMINI_API_KEY:'synthetic'});
 const claude={id:'msg_fixture',model:'claude-fixture',stop_reason:'end_turn',content:[{type:'text',text:'{"blocks":[]}'}],usage:{input_tokens:100,cache_read_input_tokens:20,cache_creation_input_tokens:0,output_tokens:30,service_tier:'standard'}};
 const gemini={responseId:'fixture',modelVersion:'gemini-fixture',candidates:[{finishReason:'STOP',content:{parts:[{text:'private reasoning',thought:true},{text:'{"blocks":[]}'}]}}],usageMetadata:{promptTokenCount:100,cachedContentTokenCount:20,candidatesTokenCount:30,thoughtsTokenCount:40,totalTokenCount:170}};
