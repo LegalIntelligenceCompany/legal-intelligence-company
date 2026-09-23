@@ -1,5 +1,5 @@
 import {assistantInstructions,parseAssistantResponse,type AssistantInput,type AssistantResult} from './assistant';
-export type ResearchJob={id:string;owner_id:string;input:AssistantInput;model:string;state:string;response_id?:string;result?:AssistantResult;error?:string;updated_at:string;expires_at:string};
+export type ResearchJob={id:string;owner_id:string;input:AssistantInput;model:string;state:string;funding_mode?:'pilot'|'commercial';response_id?:string;result?:AssistantResult;error?:string;updated_at:string;expires_at:string};
 export const researchErrors:Record<string,string>={
  SETUP:'Falta activar a pesquisa recuperável em /setup/research. Não foi iniciada uma chamada paga.',
  PAUSED:'A execução de IA está pausada. O pedido existente não é repetido.',

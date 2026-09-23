@@ -31,6 +31,26 @@ Pedidos e respostas locais ficam acessíveis por 24 horas, apenas ao dono atrav�
 
 ## Bloqueios para lançamento comercial
 
+### Ligação comercial — implementação de 23/09/2026 (desactivada por defeito)
+
+- Migrações **013 e 014**: carteira live separada do sandbox, reservas atómicas, comprovativos imutáveis por etapa, débito idempotente e encomendas de financiamento. Não criam saldo, não alteram o piloto e não fazem chamadas externas. `/setup/metering` apresenta ambas para instalação pelo titular. Exigem 001 e 010.
+- `/credits` e `/api/live-credits`: subscrições 49/99 EUR + IVA, zero crédito incluído; carregamentos de 1–500 EUR antes de IVA; três lugares por empresa; portal de gestão/cancelamento. A assinatura é validada novamente antes de cada pesquisa e carregamento. Pedidos de Checkout usam uma chave estável para recuperar falhas sem duplicar a compra.
+- `/api/live-credits/webhook`: segredo próprio, rejeita sandbox, reconsulta os pagamentos e confirma moeda, montante, titular, impostos e reembolsos. Credita uma vez mesmo com retorno + webhook concorrentes. Reembolsos/disputas congelam a carteira e eventos antigos não a desbloqueiam.
+- `/api/research`: reserva o limite apresentado ao cliente antes do fornecedor, guarda o consumo de pesquisa e revisão, liquida 3× custo agregado convertido em EUR e só depois entrega o resultado. Recuperar a mesma resposta não gera nova cobrança. Uso incerto fica reservado para reconciliação, sem repetição automática. Outros serviços continuam no piloto: **não estão comercialmente ligados à carteira**.
+- Activação continua bloqueada: `AI_COMMERCIAL_ENABLED=false` e `LIC_LIVE_CHECKOUT_ENABLED=false` por defeito. Não foram alteradas chaves, criados pagamentos live ou aumentados os 10 EUR autorizados do piloto.
+- Configuração necessária: chave live, preços live `STRIPE_LIVE_INDIVIDUAL_PRICE_ID`/`STRIPE_LIVE_BUSINESS_PRICE_ID`, assinatura `STRIPE_LIVE_CREDITS_WEBHOOK_SECRET`, registos fiscais/código de imposto `STRIPE_LIVE_CREDITS_TAX_CODE` verificados, `LIC_LIVE_TAX_READY`, condições efectivamente aprovadas/publicadas em `LIC_LIVE_TERMS_URL` e versão `LIC_LIVE_TERMS_VERSION`. Usar eventos `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `charge.refunded`, `charge.dispute.created` no destino live. O webhook continua a processar pagamentos iniciados mesmo se novas compras forem desactivadas.
+- `AI_COMMERCIAL_TARIFFS_JSON` requer `economical` e `advanced`, cada uma com duas etapas `StageBudget` (ver `lib/inference-cost.ts`), `exchange` versionado e `providerInputBoundsReviewed:true`. Usar modelos exactos/snapshots, tarifas oficiais revistas e limites máximos agregados de entrada realmente garantidos pelo fornecedor, incluindo ferramentas. Não copiar os valores sintéticos dos testes. Sem esta validação o consumo comercial deve ficar desligado. `AI_EXECUTION_ENABLED` continua a ser o interruptor geral.
+- Não há garantia de lucro líquido: comissões Stripe, câmbio, impostos, disputas, falhas e reembolsos continuam a exigir cobertura e acompanhamento. Não existe reconciliação automática de reservas sem comprovativo nem promessa de todos os serviços prontos a vender.
+
+### Motor de contabilização — base de 23/09/2026
+
+- `lib/inference-cost.ts` lê consumo terminal da Responses API, contabiliza entrada, cache, saída (incluindo raciocínio, sem o contar duas vezes) e chamadas de pesquisa. Rejeita consumo ausente, inconsistente, ferramentas/modalidades não suportadas e preços de contextos não cobertos.
+- Tarifas e câmbio são snapshots explícitos, versionados e com validade. Não há preços de produção nem câmbio predefinidos neste módulo. A correspondência de modelo e escalão é exacta; uma alteração de alias exige resolução/verificação antes de gerar. Os valores usados nos testes são sintéticos, não uma tabela comercial.
+- Agrega todas as etapas em precisão inteira antes de converter e arredondar o débito de 3× ao cêntimo, sem IVA. O custo em micros é apenas um campo informativo arredondado; não deve ser novamente multiplicado/arredondado para cobrar ao cliente.
+- `lib/inference-settlement.ts` prepara a sequência reserva → fornecedor → comprovativo de consumo → acerto. Saldo insuficiente, pedido repetido ou reserva não confirmada impedem o fornecedor. Falhas incertas conservam a reserva, sem repetição automática nem acerto artificial a zero. Saldo sandbox nunca financia um fornecedor live.
+- O adaptador durável e a ligação ao chat encontram-se agora implementados como descrito acima. Tarifas/câmbio aprovados, limites de entrada do fornecedor e contabilização específica de áudio permanecem condições de activação, não pressupostos escondidos.
+- Verificação local: testes unitários de custo, integração simulada do fluxo de pesquisa e SQL transaccional de 013/014. Zero chamadas pagas de IA ou pagamentos reais. Estes testes não substituem a configuração e validação do deployment.
+
 ### Carteira automática em sandbox — actualização 012
 
 - `/setup/credits` permite à conta de configuração abrir carteiras Individual/Empresas, subscrever os preços aprovados em TESTE, comprar saldo avulso (montante livre de 1 a 500 EUR por operação de teste), consultar movimentos e gerir/cancelar a subscrição no portal Stripe. Não activa cobranças reais.

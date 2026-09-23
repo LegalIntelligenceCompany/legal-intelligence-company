@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 // Stripe v1: HMAC-SHA256 over timestamp + '.' + the untouched request bytes.
 // All v1 signatures are accepted for secret rotation; timestamp tolerance is bounded.
-export function verifyStripeEvent(body: string, header: string | null, secret: string, now = Date.now()) {
+export function verifyStripeEvent(body: string, header: string | null, secret: string, now = Date.now(), live = false) {
   if (!secret.startsWith("whsec_") || !header || header.length > 4096) throw new Error("SIGNATURE");
   const parts = header.split(",").map(part => part.trim().split("="));
   const timestamps = parts.filter(([key]) => key === "t");
@@ -13,8 +13,8 @@ export function verifyStripeEvent(body: string, header: string | null, secret: s
   const valid = parts.some(([key, value]) => key === "v1" && /^[a-f0-9]{64}$/i.test(value || "") && timingSafeEqual(expected, Buffer.from(value, "hex")));
   if (!valid) throw new Error("SIGNATURE");
   const event = JSON.parse(body);
-  if (!/^evt_[a-zA-Z0-9]+$/.test(event?.id) || event.livemode !== false || typeof event.type !== "string" || !event.data?.object) throw new Error("EVENT");
-  return event as { id: string; type: string; livemode: false; data: { object: Record<string, unknown> } };
+  if (!/^evt_[a-zA-Z0-9]+$/.test(event?.id) || event.livemode !== live || typeof event.type !== "string" || !event.data?.object) throw new Error("EVENT");
+  return event as { id: string; type: string; livemode: boolean; data: { object: Record<string, unknown> } };
 }
 export const billingEvents = new Set(["checkout.session.completed", "checkout.session.expired", "customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted", "customer.subscription.paused", "customer.subscription.resumed", "invoice.paid", "invoice.payment_failed", "invoice.payment_action_required"]);
 

@@ -3,6 +3,7 @@ import { Icon } from "./icons";
 import {Brand} from './brand';
 
 const items = [
+  ["/credits", "file", "Planos e créditos"],
   ["/setup/pilot", "shield", "Orçamento de teste IA"],
   ["/transcription", "file", "Transcrição de áudio"],
   ["/services", "file", "Serviços jurídicos"],
