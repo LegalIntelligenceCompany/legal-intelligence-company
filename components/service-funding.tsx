@@ -22,7 +22,7 @@ export function useServiceFunding(service:string){
   {error&&<p role="alert">{error}</p>}
   {current?.mode==='pilot'&&<p>Pedido sujeito ao orçamento de teste autorizado. <Link href="/setup/pilot">Consultar orçamento</Link></p>}
   {current?.mode==='commercial'&&<>
-   <label>Carteira <select value={wallet} onChange={e=>{setWallet(e.target.value);setAccepted(false);}}>{current.wallets.map(w=><option key={w.id} value={w.id}>{w.scope==='individual'?'Pessoal':'Empresa'} · {euros(w.availableCents)} disponíveis</option>)}</select></label>
+   <label>Carteira <select value={wallet} onChange={e=>{setWallet(e.target.value);setAccepted(false);}}>{current.wallets.map(w=><option key={w.id} value={w.id}>{w.scope==='personal'?'Pessoal':'Empresa'} · {euros(w.availableCents)} disponíveis</option>)}</select></label>
    <p>Reserva máxima: {euros(current.ceiling)} de saldo pré-pago. O débito é calculado sobre o consumo confirmado; a diferença é libertada. Consumo incerto mantém a reserva para verificação.</p>
    {(!selected||!selected.active||selected.frozen||selected.availableCents<current.ceiling)&&<p>É necessária uma subscrição activa e saldo disponível suficiente. <Link href="/credits">Gerir créditos</Link></p>}
    <label className="analysis-consent"><input type="checkbox" checked={accepted} onChange={e=>setAccepted(e.target.checked)}/>Autorizo esta reserva e o débito do consumo até este limite.</label>
