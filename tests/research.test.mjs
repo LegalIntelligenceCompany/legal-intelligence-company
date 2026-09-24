@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import ts from 'typescript';
-function load(path,deps,env={}){const module={exports:{}};const source=ts.transpileModule(readFileSync(new URL(path,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText;new Function('require','module','exports','process','console',source)(n=>{if(!(n in deps))throw Error(n);return deps[n];},module,module.exports,{env:{AI_EXECUTION_ENABLED:'true',OPENAI_API_KEY:'test',...env}},{warn(){}});return module.exports;}
+function load(path,deps,env={}){const module={exports:{}};const source=ts.transpileModule(readFileSync(new URL(path,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText;new Function('require','module','exports','process','console',source)(n=>{if(!(n in deps))throw Error(n);return deps[n];},module,module.exports,{env:{AI_EXTERNAL_MODELS_ENABLED:'true',AI_EXECUTION_ENABLED:'true',OPENAI_API_KEY:'test',...env}},{warn(){}});return module.exports;}
 const actor='10000000-0000-4000-8000-000000000001',id='20000000-0000-4000-8000-000000000001';
 const input={requestId:id,mode:'research',profile:'Geral',country:'Portugal',question:'Pergunta pública',history:[],documentIds:[],consent:true};
 const result={text:'Resposta com fontes',citations:[],researched:true,generatedAt:new Date().toISOString()};
@@ -19,6 +19,15 @@ function setup(options={}){
  return {rows,calls,rpc,meterCalls,get:route.GET,reservations:()=>reservations,post:(body,origin='https://lic.test')=>route.POST(new Request('https://lic.test/api/research',{method:'POST',headers:{origin,'content-type':'application/json'},body:JSON.stringify(body)}))};
 }
 const start={action:'start',input,backgroundConsent:true},advance={action:'advance',id};
+test('OpenAI-only mode hides external models and blocks forged external starts before spending',async()=>{
+ for(const enabled of [undefined,'false']){
+  const s=setup({external:true,commercial:true,env:{AI_EXTERNAL_MODELS_ENABLED:enabled}});
+  assert.deepEqual((await (await s.get()).json()).models,[]);
+  assert.equal((await s.post({...start,model:'review-sonnet'})).status,403);
+  assert.equal(s.calls.length,0);assert.equal(s.meterCalls.length,0);
+  assert.equal((await s.post(start)).status,200);
+ }
+});
 test('external review is commercial only and unavailable access fails before any paid research',async()=>{
  for(const options of [{external:true},{external:true,commercial:true,unavailable:true}]){
   const s=setup(options);assert.ok((await s.post({...start,model:'review-sonnet'})).status>=400);assert.equal(s.calls.length,0);assert.equal(s.reservations(),0);assert.equal(s.meterCalls.length,0);

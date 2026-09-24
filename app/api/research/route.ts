@@ -29,7 +29,7 @@ export async function GET(){
   else try{funding=await commercialFundingInfo(admin,user.id);}catch{funding={mode:'disabled',error:meterMessages.METER_SETUP};}
  }
  const models: {id:string;label:string;available:boolean;reason?:string;ceiling?:number}[]=[];
- try{for(const row of reviewerCatalogue()){
+ try{for(const row of process.env.AI_EXTERNAL_MODELS_ENABLED==='true'?reviewerCatalogue():[]){
   let ceiling:number|undefined;try{ceiling=meterConfiguration(row.id as `review-${string}`).ceiling;}catch{/* No key or reviewed tariff. */}
   const available=commercialMeterEnabled()&&deniedCommercial(user)&&ceiling!==undefined;
   models.push({id:row.id,label:row.label,available,ceiling,reason:available?undefined:'Requer acesso comercial, chave e tarifas validadas.'});
@@ -62,7 +62,7 @@ export async function POST(request:Request){
    if(input.mode!=='research'||input.organizationId||input.material||body.backgroundConsent!==true)return fail('INVALID_REQUEST');
    const model=body.model??PILOT_MODEL;
    const external=typeof model==='string'&&model.startsWith('review-');
-   if(external){if(!commercial)return fail('MODEL_UNAVAILABLE',403);configuredReviewer(model);meterConfiguration(model as `review-${string}`);}
+   if(external){if(!commercial||process.env.AI_EXTERNAL_MODELS_ENABLED!=='true')return fail('MODEL_UNAVAILABLE',403);configuredReviewer(model);meterConfiguration(model as `review-${string}`);}
    else if(!allowedResearchModel(model))return fail('MODEL',403);
    const existing=await admin.from('research_jobs').select('*').eq('id',input.requestId).eq('owner_id',user.id).maybeSingle();
    if(existing.error)return fail('SETUP',503);if(existing.data)return json({job:publicJob(existing.data)});
@@ -92,6 +92,7 @@ export async function POST(request:Request){
   if(Date.now()-Date.parse(job!.updated_at)>8*60000){await update({state:'failed',error:'EXPIRED'});return json({job:publicJob(job!)});}
   if(['starting','review_starting'].includes(job!.state))return json({job:publicJob(job!)});
   const external=job!.model.startsWith('review-');
+  if(external&&job!.state==='draft'&&process.env.AI_EXTERNAL_MODELS_ENABLED!=='true')return fail('PAUSED',503);
   const saved=(job!.result as {externalReview?:Record<string,unknown>}|undefined)?.externalReview;
   if(!(external&&job!.state==='review')&&!validResponseId(job!.response_id))throw Error('UNKNOWN');
   const raw=external&&job!.state==='review'?saved:await openai.get<unknown,Record<string,unknown>>('/responses/'+job!.response_id);

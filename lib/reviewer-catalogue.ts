@@ -23,6 +23,7 @@ export function reviewerCatalogue(env:Record<string,string|undefined>=process.en
 }
 export function reviewerKey(provider:Reviewer['provider']){return provider==='anthropic'?'ANTHROPIC_API_KEY':'GEMINI_API_KEY';}
 export function configuredReviewer(id:string):Reviewer{
+ if(process.env.AI_EXTERNAL_MODELS_ENABLED!=='true')throw Error('MODEL_UNAVAILABLE');
  const model=reviewerCatalogue().find(row=>row.id===id);
  if(!model?.validated||!process.env[reviewerKey(model.provider)])throw Error('MODEL_UNAVAILABLE');
  return model;

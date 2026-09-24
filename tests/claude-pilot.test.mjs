@@ -11,7 +11,7 @@ function fixture(){
  './external-review':{countFailureMessage:()=>null,countExternalReview:async()=>123,checkExternalModel:async()=>{state.access++;},externalReview:async(model,instructions,prompt,schema,input,output)=>{state.calls++;assert.equal(model.model,'claude-sonnet-5');assert.equal(input,2000);assert.equal(output,600);assert.ok(prompt.includes('fictício'));if(state.fail)throw Error('timeout');return {status:'completed',model:model.model,id:'fixture',usage:{input_tokens:200,output_tokens:100},output:[{content:[{text:JSON.stringify({answer:'Documentos contraditórios [A] [B].'})}]}]};}}
  };
  const js=ts.transpileModule(readFileSync(new URL('../lib/claude-pilot.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
- const exports={};new Function('require','exports','process',js)(id=>{assert.ok(id in deps,id);return deps[id];},exports,{env:{ANTHROPIC_API_KEY:'fixture',AI_EXECUTION_ENABLED:'true'}});
+ const exports={};new Function('require','exports','process',js)(id=>{assert.ok(id in deps,id);return deps[id];},exports,{env:{ANTHROPIC_API_KEY:'fixture',AI_EXECUTION_ENABLED:'true',AI_EXTERNAL_MODELS_ENABLED:'true'}});
  return {state,diagnose:exports.diagnoseClaudeCount,run:(user={id:'owner'},consent=true)=>exports.runClaudePilot(admin,user,consent)};
 }
 test('count-only diagnostic never reserves budget or generates text',async()=>{const f=fixture();assert.match(await f.diagnose(),/123 tokens/);assert.equal(f.state.reserved,0);assert.equal(f.state.calls,0);assert.equal(f.state.row,null);});

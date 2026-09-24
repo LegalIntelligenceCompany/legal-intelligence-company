@@ -16,6 +16,7 @@ export async function diagnoseClaudeCount(){
 }
 export async function runClaudePilot(admin:NonNullable<ReturnType<typeof createAdminClient>>,user:{id:string;email?:string;email_confirmed_at?:string|null},consent:boolean){
  if(!pilotAccount(user)||!consent)throw Error('PILOT_FORBIDDEN');
+ if(process.env.AI_EXTERNAL_MODELS_ENABLED!=='true')throw Error('EXTERNAL_PAUSED');
  if(!pilotEnabled()||process.env.AI_EXECUTION_ENABLED!=='true'||!process.env.ANTHROPIC_API_KEY)throw Error('PILOT_SETUP');
  if(Date.now()>Date.parse(PILOT_EXPIRES))throw Error('PILOT_EXPIRED');
  const existing=await admin.from('ai_claude_pilot').select('status').eq('singleton',true).maybeSingle();

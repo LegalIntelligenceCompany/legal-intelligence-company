@@ -1,5 +1,19 @@
 # Escolha de modelos: estado e activação
 
+## Modo OpenAI apenas — pedido do titular em 24/09/2026
+
+`AI_EXTERNAL_MODELS_ENABLED` fica desligado por omissão (ausente ou `false`).
+Claude/Gemini são removidos das opções enviadas ao cliente. Pedidos directos à
+API e novas revisões externas de pesquisas em curso são bloqueados antes da
+geração. O teste pago Claude também fica bloqueado. Resultados já concluídos e
+diagnósticos sem geração continuam acessíveis. Não se apagam chaves, tarifas,
+catálogo, código, saldos ou reservas; não é necessário SQL.
+
+Só após nova ordem do titular: confirmar saldo do fornecedor, compatibilidade
+e tarifas; configurar `AI_EXTERNAL_MODELS_ENABLED=true` e publicar. Este
+interruptor não substitui as restantes validações nem desbloqueia/reinicia o
+teste único já consumido. Não cancela chamadas iniciadas antes da desactivação.
+
 Implementado: adaptadores de texto Anthropic Messages e Google Gemini generateContent,
 catálogo configurável, escolha no chat, revisão com fontes previamente pesquisadas,
 reserva pré-paga, comprovativos normalizados e recuperação sem nova geração.

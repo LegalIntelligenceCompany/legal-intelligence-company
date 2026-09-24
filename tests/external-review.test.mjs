@@ -87,8 +87,10 @@ test('commercial reviewer plan binds exact model, two stages, valid tariff and k
  const tariff={id:'fixture',model:'gpt-5-mini',tier:'default',validFrom:'2020-01-01',validUntil:'2100-01-01',inputNanoUsd:1000,cachedInputNanoUsd:100,outputNanoUsd:1000,webSearchNanoUsd:10000000,maxInputTokens:1000};
  const stage={tariff,maxInput:1000,maxOutput:100,maxWebSearchCalls:2};
  const config={providerInputBoundsReviewed:true,exchange:{id:'fixture',validFrom:'2020-01-01',validUntil:'2100-01-01',eurNumerator:1,usdDenominator:1},'review-sonnet':[stage,{...stage,tariff:{...tariff,model:entry.model},maxWebSearchCalls:0}]};
- const make=(changes={},value=config)=>{const env={ANTHROPIC_API_KEY:'fixture',AI_REVIEW_MODELS_JSON:JSON.stringify([entry]),AI_COMMERCIAL_TARIFFS_JSON:JSON.stringify(value),...changes};return load('../lib/commercial-meter.ts',{'server-only':{},'./inference-cost':cost,'./live-subscription':{},'./reviewer-catalogue':load('../lib/reviewer-catalogue.ts',{},env)},env);};
+ const make=(changes={},value=config)=>{const env={AI_EXTERNAL_MODELS_ENABLED:'true',ANTHROPIC_API_KEY:'fixture',AI_REVIEW_MODELS_JSON:JSON.stringify([entry]),AI_COMMERCIAL_TARIFFS_JSON:JSON.stringify(value),...changes};return load('../lib/commercial-meter.ts',{'server-only':{},'./inference-cost':cost,'./live-subscription':{},'./reviewer-catalogue':load('../lib/reviewer-catalogue.ts',{},env)},env);};
  assert.ok(make().meterConfiguration('review-sonnet').ceiling>0);
+ assert.throws(()=>make({AI_EXTERNAL_MODELS_ENABLED:undefined}).meterConfiguration('review-sonnet'),/METER_SETUP/);
+ assert.throws(()=>make({AI_EXTERNAL_MODELS_ENABLED:'false'}).meterConfiguration('review-sonnet'),/METER_SETUP/);
  assert.throws(()=>make({ANTHROPIC_API_KEY:''}).meterConfiguration('review-sonnet'),/METER_SETUP/);
  assert.throws(()=>make({}, {...config,providerInputBoundsReviewed:false}).meterConfiguration('review-sonnet'),/METER_SETUP/);
  assert.throws(()=>make({}, {...config,'review-sonnet':[stage,stage]}).meterConfiguration('review-sonnet'),/METER_SETUP/);
