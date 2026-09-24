@@ -22,6 +22,8 @@ try {
   await db.query("select assistant_finish($1,$2,true)", [first, other]);
   assert.equal((await db.query("select status from assistant_requests where id=$1", [first])).rows[0].status, "processing");
   await db.query("select assistant_finish($1,$2,true)", [first, actor]);
+  await db.query("select assistant_finish($1,$2,false)", [first, actor]);
+  assert.equal((await db.query("select status from assistant_requests where id=$1", [first])).rows[0].status, "completed");
   for (let i = 1; i < 20; i++) { const id = crypto.randomUUID(); await db.query("select assistant_begin($1,$2)", [id, actor]); await db.query("select assistant_finish($1,$2,false)", [id, actor]); }
   await assert.rejects(db.query("select assistant_begin($1,$2)", [crypto.randomUUID(), actor]), /RATE_LIMITED/);
   await db.query("insert into assistant_requests(id,user_id,status) select gen_random_uuid(),$1,'failed' from generate_series(1,180)", [other]);

@@ -4,12 +4,12 @@ import {Brand} from './brand';
 
 const items = [
   ["/credits", "file", "Planos e créditos"],
-  ["/setup/pilot", "shield", "Orçamento de teste IA"],
+  ["/usage", "shield", "Histórico de consumo"],
   ["/transcription", "file", "Transcrição de áudio"],
   ["/services", "file", "Serviços jurídicos"],
   ["/clauses", "file", "Cláusulas"],
   ["/library", "file", "Dossiers"],
-  ["/alerts", "file", "Alertas legislativos"],
+  ["/alerts", "file", "Temas legislativos"],
   ["/chat", "file", "Chat jurídico"],
   ["/dashboard", "home", "Visão geral"],
   ["/tools", "file", "Ferramentas"],
@@ -17,6 +17,8 @@ const items = [
   ["/policies", "shield", "Políticas"],
   ["/company", "building", "Empresa"],
   ["/team", "building", "Equipa"],
+  ["/settings", "settings", "A minha conta"],
+  ["/help", "file", "Ajuda"],
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {

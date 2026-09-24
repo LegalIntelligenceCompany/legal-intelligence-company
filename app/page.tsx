@@ -25,6 +25,6 @@ export default function Home() {
     </section>
     <section id="como-funciona" className="home-services"><div className="shell"><div className="eyebrow">Uma plataforma, vários serviços</div><h2>Da investigação à revisão documental.</h2><div className="service-grid">{services.map(([title, description, href, label], i) => <article className="card service-card" key={title}><span className="service-number">0{i + 1}</span><h3>{title}</h3><p>{description}</p><Link className="btn btn-secondary" href={href}>{label}</Link></article>)}</div></div></section>
     <section id="seguranca" className="shell home-security"><Icon name="shield" size={30}/><div><h2>Pesquisa pública. Documentos privados.</h2><p>O chat jurídico não exige uma empresa. Os documentos são acessíveis apenas aos membros autorizados da organização. A partilha com a IA exige consentimento; nunca coloque dados confidenciais na pesquisa pública.</p><p>Fontes citadas não são uma garantia de correcção jurídica. Confirme o texto original, a versão aplicável e as conclusões antes de agir.</p></div></section>
-    <footer className="shell home-footer">© 2026 Legal Intelligence Company. Informação e apoio à revisão — não constitui aconselhamento jurídico.</footer>
+    <footer className="shell home-footer"><p>© 2026 Legal Intelligence Company. Informação e apoio à revisão — não constitui aconselhamento jurídico.</p><div className="workspace-toolbar"><Link href="/credits">Planos e créditos</Link><Link href="/help">Ajuda</Link><Link href="/settings">A minha conta</Link></div></footer>
   </main>;
 }

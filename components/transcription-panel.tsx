@@ -1,6 +1,7 @@
 "use client";
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
+import {useUnsavedWork} from './use-unsaved-work';
 import { createClient } from '@/lib/supabase/client';
 import { AUDIO_ACCEPT, MAX_AUDIO_BYTES, MAX_RECORDING_SECONDS, audioExtension } from '@/lib/transcription';
 import { downloadReport } from './assistant-panel';
@@ -12,6 +13,7 @@ export function TranscriptionPanel(){
  const [consent,setConsent]=useState(false),[recording,setRecording]=useState(false),[starting,setStarting]=useState(false),[busy,setBusy]=useState(false),[seconds,setSeconds]=useState(0),[language,setLanguage]=useState('auto');
  const [status,setStatus]=useState<{enabled:boolean;message:string;login:boolean;pilot?:boolean}>({enabled:false,message:'A verificar a conta e disponibilidade…',login:false});
  const [waiting,setWaiting]=useState(0);
+ useUnsavedWork(busy||recording||!!text);
  const recorder=useRef<MediaRecorder|null>(null),stream=useRef<MediaStream|null>(null),timer=useRef<ReturnType<typeof setInterval>|null>(null),epoch=useRef(0),pending=useRef(false),request=useRef<AbortController|null>(null),user=useRef<string|null>(null),asking=useRef(false);
  function stop(){if(recorder.current?.state==='recording')recorder.current.stop();stream.current?.getTracks().forEach(t=>t.stop());stream.current=null;if(timer.current)clearInterval(timer.current);timer.current=null;}
  function clear(){epoch.current++;stop();request.current?.abort();setFile(null);setText('');setConsent(false);setError('');setRecording(false);setSeconds(0);}

@@ -1,6 +1,7 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import {loginDestination} from '@/lib/login-destination';
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -11,7 +12,8 @@ export async function GET(request: Request) {
   if (!code) return NextResponse.redirect(`${origin}/login?error=invalid_link`);
   const cookieStore = await cookies();
   const returnTo = cookieStore.get("lic_return")?.value;
-  const destination = returnTo === "chat" ? "/chat" : returnTo === "billing" ? "/billing" : "/dashboard";
+  let decoded='';try{decoded=decodeURIComponent(returnTo||'');}catch{/* Invalid cookie fails closed. */}
+  const destination = loginDestination(decoded==='chat'?'/chat':decoded==='billing'?'/billing':decoded);
   const response = NextResponse.redirect(`${origin}${destination}`);
   response.cookies.set("lic_return", "", { path: "/", maxAge: 0 });
   const deadline = AbortSignal.timeout(12000);

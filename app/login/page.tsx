@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { MarketingNav } from "@/components/marketing-nav";
 import { createClient } from "@/lib/supabase/client";
+import {loginDestination} from '@/lib/login-destination';
 
 const errors: Record<string, string> = {
   login: "Não foi possível concluir a entrada. O link pode ter expirado, já ter sido utilizado ou ter sido aberto num navegador diferente.",
@@ -24,7 +25,7 @@ export default function Login() {
     if (!supabase) { setMessage(errors.configuration); return; }
     setLoading(true); setMessage("");
     const next = new URLSearchParams(window.location.search).get("next");
-    document.cookie = `lic_return=${next === "/chat" ? "chat" : next === "/billing" ? "billing" : "dashboard"}; Path=/; Max-Age=900; SameSite=Lax${window.location.protocol === "https:" ? "; Secure" : ""}`;
+    document.cookie = `lic_return=${encodeURIComponent(loginDestination(next))}; Path=/; Max-Age=900; SameSite=Lax${window.location.protocol === "https:" ? "; Secure" : ""}`;
     try {
       const { error } = await supabase.auth.signInWithOtp({ email: email.trim(), options: { emailRedirectTo: `${window.location.origin}/auth/callback` } });
       setMessage(error ? "Não foi possível enviar o e-mail. Verifique o endereço; se o problema persistir, o administrador deve consultar os registos de autenticação." : "E-mail enviado. A sessão só fica iniciada depois de abrir o link, neste mesmo navegador.");
