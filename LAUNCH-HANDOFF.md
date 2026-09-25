@@ -1,4 +1,17 @@
-# Preparação de lançamento — 24 de Setembro de 2026
+# Preparação de lançamento — actualização de 25 de Setembro de 2026
+
+## Revisão de 25/09
+
+- Recuperação opcional, com consentimento explícito, dos resultados do assistente documental e da transcrição durante 24 horas. Não copia áudio, PDFs ou perguntas; o resultado pode conter dados provenientes do material, pelo que continua a ser conteúdo sensível.
+- Resultados validados são guardados antes do acerto financeiro. Pedidos incertos não são reenviados automaticamente. O mecanismo não garante recuperação se o servidor terminar antes de guardar o resultado.
+- Consulta autorizada por conta e nova verificação de acesso à organização/documentos. Limpeza de expirados na consulta e tarefa diária protegida por segredo.
+- Acerto administrativo para pedidos com todos os recibos confirmados; casos com recibos em falta mantêm a reserva e exigem investigação.
+- 207 testes da aplicação e 12 suites SQL passaram; lint e build de produção passaram. Sem chamadas pagas, cobranças reais ou alteração de configuração remota.
+- Verificação local no navegador: página de recuperação legível, botão responde com pedido de autenticação sem sessão e não expõe resultados. Recuperação autenticada e controlo de acesso verificados com testes simulados, não com dados de clientes em produção.
+- Publicar o código, instalar apenas a nova migração 018 em `/setup/recovery`, configurar `CRON_SECRET` e confirmar execução da limpeza na Vercel. Os passos completos e as pendências comerciais estão em [STRIPE-LANCAMENTO.md](STRIPE-LANCAMENTO.md).
+- Comparação documentada e prioridades de produto em [COMPARACAO-MERCADO.md](COMPARACAO-MERCADO.md). Não é uma certificação de superioridade.
+
+As notas de 24/09 abaixo são históricas. As duas limitações de recuperação e acerto exclusivamente consultivo foram parcialmente resolvidas acima; continuam pendentes validação remota, consumos sem recibos e aprovação comercial.
 
 ## Alterações desta revisão
 

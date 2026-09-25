@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
+import {beginRecovery,saveRecovery,uncertainRecovery,recoveryRequested} from '@/lib/result-recovery';
 import OpenAI from "openai";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -12,6 +13,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 180;
 const headers = { "Cache-Control": "no-store" };
 const messages: Record<string, string> = {
+  RECOVERY_SETUP:'A recuperação não está instalada. Nenhuma chamada à IA foi feita. O administrador deve instalar a actualização 018.',
+  RECOVERY_SAVE:'Não foi possível guardar o resultado para recuperação. Não repita o pedido; o consumo pode ter ocorrido.',
   ...pilotMessages,
   ...meterMessages,
   BILLING_TEST_ONLY: "Os pagamentos estão em teste. Uma subscrição simulada não permite chamadas pagas à IA.",
@@ -48,17 +51,18 @@ export async function POST(request: Request) {
         const emit = (event: unknown) => { if (connected) { try { controller.enqueue(new TextEncoder().encode(JSON.stringify(event)+'\n')); } catch { connected=false; } } };
         emit({type:'progress',stage:'checking'});
         const heartbeat = setInterval(()=>emit({type:'heartbeat'}),10000);
-        void (async()=>{
+        const task=(async()=>{
           try { const response=await handle(request,stage=>emit({type:'progress',stage}));emit({type:'done',status:response.status,data:await response.json()}); }
           catch { emit({type:'done',status:503,data:{code:'PROVIDER',error:messages.PROVIDER}}); }
           finally { clearInterval(heartbeat);if(connected){connected=false;controller.close();} }
         })();
+        if(recoveryRequested(request))after(()=>task);
       },
       cancel() { connected=false; },
     });
     return new Response(stream,{headers:{'Content-Type':'application/x-ndjson; charset=utf-8','Cache-Control':'no-store, no-transform','X-Accel-Buffering':'no'}});
   }
-  try { return await handle(request); } catch { return fail("PROVIDER", 503); }
+  try { const task=handle(request);if(recoveryRequested(request))after(()=>task.then(()=>{}));return await task; } catch { return fail("PROVIDER", 503); }
 }
 async function handle(request: Request, progress: (stage:string)=>void = ()=>{}) {
   const started=Date.now(), deadline=started+160000;
@@ -78,6 +82,7 @@ async function handle(request: Request, progress: (stage:string)=>void = ()=>{})
   const admin = createAdminClient();
   if (!admin || !process.env.OPENAI_API_KEY) return fail("NOT_CONFIGURED", 503);
   let reserved = false;
+  let recoverable=false;
   try {
     const documents: { storage_path: string; byte_size: number }[] = [];
     for (const id of input.documentIds) {
@@ -93,6 +98,7 @@ async function handle(request: Request, progress: (stage:string)=>void = ()=>{})
       return fail(code ?? "SETUP_REQUIRED", code ? 429 : 503);
     }
     reserved = true;
+    recoverable=await beginRecovery(admin,request,input.requestId,auth.user.id,'assistant',input.organizationId,input.documentIds);
     const files = [];
     for (let i = 0; i < documents.length; i++) {
       const downloaded = await client.storage.from("contracts").download(documents[i].storage_path);
@@ -128,15 +134,18 @@ async function handle(request: Request, progress: (stage:string)=>void = ()=>{})
     }), timeout: providerTimeout() });
     if(meter) await recordCommercialResearch(admin,auth.user.id,meter,1,reviewed);
     stage='validation';progress(stage);
-    const result = { ...parseAssistantResponse(reviewed, research), review: "second-pass" as const, model:meter?.plan[1].tariff.model||model, ...(meter?{chargedCents:await settleCommercialResearch(admin,auth.user.id,meter.id)}:{}) };
+    const result = { ...parseAssistantResponse(reviewed, research), review: "second-pass" as const, model:meter?.plan[1].tariff.model||model };
+    if(recoverable)await saveRecovery(admin,input.requestId,auth.user.id,{result});
+    const chargedCents=meter?await settleCommercialResearch(admin,auth.user.id,meter.id):undefined;
     const finish = await admin.rpc("assistant_finish", { p_id: input.requestId, p_actor: auth.user.id, p_success: true });
     if (finish.error) console.warn("[assistant] quota-finish-failed");
-    return NextResponse.json({ result }, { headers });
+    return NextResponse.json({ result:{...result,...(chargedCents===undefined?{}:{chargedCents})} }, { headers });
   } catch (error) {
+    if(recoverable)try{await uncertainRecovery(admin,input.requestId,auth.user.id);}catch{/* Keep the existing state; never repeat paid work. */}
     const detail=error as {name?:string;status?:number};
     const status=typeof detail?.status==='number'?detail.status:undefined;
     const timedOut=(typeof OpenAI.APIConnectionTimeoutError==='function'&&error instanceof OpenAI.APIConnectionTimeoutError)||detail?.name==='APIConnectionTimeoutError'||detail?.name==='AbortError';
-    const code = error instanceof Error && (["DOCUMENT", "NO_SOURCES", "INCOMPLETE", "REFUSED", "TIMEOUT"].includes(error.message) || Object.hasOwn(pilotMessages,error.message) || Object.hasOwn(meterMessages,error.message)) ? error.message : timedOut ? 'TIMEOUT' : status===429 ? 'PROVIDER_LIMIT' : status && [400,401,403,404].includes(status) ? 'PROVIDER_CONFIG' : "PROVIDER";
+    const code = error instanceof Error && (["RECOVERY_SETUP","RECOVERY_SAVE","DOCUMENT", "NO_SOURCES", "INCOMPLETE", "REFUSED", "TIMEOUT"].includes(error.message) || Object.hasOwn(pilotMessages,error.message) || Object.hasOwn(meterMessages,error.message)) ? error.message : timedOut ? 'TIMEOUT' : status===429 ? 'PROVIDER_LIMIT' : status && [400,401,403,404].includes(status) ? 'PROVIDER_CONFIG' : "PROVIDER";
     if (reserved) {
       try { await admin.rpc("assistant_finish", { p_id: input.requestId, p_actor: auth.user.id, p_success: false }); }
       catch { /* The lease expires even if the database is unavailable. */ }

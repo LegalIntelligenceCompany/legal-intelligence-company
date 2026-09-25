@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
+import {beginRecovery,saveRecovery,uncertainRecovery,recoveryRequested} from '@/lib/result-recovery';
 import OpenAI, { toFile } from 'openai';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -15,6 +16,10 @@ const errors:Record<string,string>={UNAUTHORIZED:'Entre na sua conta.',FORBIDDEN
 function fail(code:string,status=400){return NextResponse.json({code,error:meterMessages[code]||pilotMessages[code]||errors[code]||errors.PROVIDER},{status,headers});}
 export async function GET(){try{const client=await createClient(true);const auth=await client?.auth.getUser();if(!auth?.data.user||auth.error)return fail('UNAUTHORIZED',401);const pilot=!paidAIAccessError(auth.data.user);const code=process.env.AI_EXECUTION_ENABLED!=='true'?'AI_PAUSED':serviceAccessError(auth.data.user);return NextResponse.json({enabled:!code,pilot,message:code?(pilotMessages[code]||errors[code]):pilot?'Teste económico: apenas WAV PCM de 16 bits até 60 segundos. Reserva de 0,20 € por tentativa, não reembolsada automaticamente. Consulte /setup/pilot.':''},{headers});}catch{return fail('SETUP',503);}}
 export async function POST(request:Request){
+ const task=transcribe(request);if(recoveryRequested(request))after(()=>task.then(()=>{}));return task;
+}
+async function transcribe(request:Request){
+ let recoverable=false;
  let reserved=false;let admin:ReturnType<typeof createAdminClient>=null;let actor='';let id='';
  try{
   if(request.headers.get('origin')!==new URL(request.url).origin)return fail('FORBIDDEN',403);
@@ -33,15 +38,19 @@ export async function POST(request:Request){
   if(!request.headers.get('x-credit-wallet')&&!paidAIAccessError(auth.data.user))validatePilotWav(bytes,ext);
   const begin=await admin.rpc('assistant_begin',{p_id:id,p_actor:actor});
   if(begin.error){const code=['BUSY','DUPLICATE','RATE_LIMITED'].find(c=>begin.error.message.includes(c));return fail(code||'SETUP',code?429:503);}reserved=true;
+  recoverable=await beginRecovery(admin,request,id,actor,'transcription');
   const meter=await reserveService(admin,auth.data.user,id,'transcription','transcription',request);
   const openai=new OpenAI({apiKey:process.env.OPENAI_API_KEY,baseURL:'https://api.openai.com/v1',timeout:120000,maxRetries:0});
   const {data:result,response}=await openai.audio.transcriptions.create({file:await toFile(bytes,`audio.${ext}`),model:meter?.plan[0].tariff.model||'gpt-4o-mini-transcribe',response_format:'json',...(language==='auto'?{}:{language})}).withResponse();
   if(meter)await recordCommercialAudio(admin,actor,meter,result,response.headers.get('x-request-id')||'');
   const text=transcriptionText(result);
+  const generatedAt=new Date().toISOString();
+  if(recoverable)await saveRecovery(admin,id,actor,{text,generatedAt});
   const chargedCents=meter?await settleCommercialResearch(admin,actor,id):undefined;
-  // No audio or transcript is persisted. Only the existing quota request is recorded.
+  // Audio is never persisted here. Output is saved only with explicit recovery consent.
   try{await admin.rpc('assistant_finish',{p_id:id,p_actor:actor,p_success:true});}catch{/* lease expires */}
-  return NextResponse.json({text,chargedCents,generatedAt:new Date().toISOString()},{headers});
- }catch(error){if(reserved&&admin){try{await admin.rpc('assistant_finish',{p_id:id,p_actor:actor,p_success:false});}catch{/* lease expires */}}
+  return NextResponse.json({text,chargedCents,generatedAt},{headers});
+ }catch(error){if(recoverable&&admin)try{await uncertainRecovery(admin,id,actor);}catch{/* no retry */}if(reserved&&admin){try{await admin.rpc('assistant_finish',{p_id:id,p_actor:actor,p_success:false});}catch{/* lease expires */}}
+ if(error instanceof Error&&error.message.startsWith('RECOVERY_'))return NextResponse.json({error:error.message==='RECOVERY_SETUP'?'Falta instalar a recuperação (018). Não enviámos o áudio à IA.':'Não foi possível guardar a transcrição. Não repita o pedido; o consumo pode ter ocorrido.'},{status:503,headers});
  const code=error instanceof Error&&(['FORMAT','SIZE','EMPTY'].includes(error.message)||Object.hasOwn(pilotMessages,error.message)||Object.hasOwn(meterMessages,error.message))?error.message:'PROVIDER';return fail(code,code==='PROVIDER'||code==='EMPTY'?502:400);}
 }

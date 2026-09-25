@@ -1,0 +1,3 @@
+'use client';
+import {useState} from 'react';
+export function ReconcileButton({id}:{id:string}){const [busy,setBusy]=useState(false),[message,setMessage]=useState('');return <><button className="btn btn-secondary" disabled={busy} onClick={async()=>{if(!confirm('Confirmar o acerto apenas com os recibos existentes? Não inicia IA e não estima consumos em falta.'))return;setBusy(true);try{const r=await fetch('/api/reconcile?id='+encodeURIComponent(id),{method:'POST'});const d=await r.json();setMessage(r.ok?`Acerto confirmado: ${(d.chargedCents/100).toFixed(2)} €. Actualize a lista.`:d.error);}catch{setMessage('Ligação interrompida. Consulte o histórico antes de repetir.');}finally{setBusy(false);}}}>Acertar com recibos confirmados</button><p role="status">{message}</p></>;}

@@ -5,6 +5,7 @@ import {Brand} from './brand';
 const items = [
   ["/credits", "file", "Planos e créditos"],
   ["/usage", "shield", "Histórico de consumo"],
+  ["/recoveries", "file", "Recuperar resultados"],
   ["/transcription", "file", "Transcrição de áudio"],
   ["/services", "file", "Serviços jurídicos"],
   ["/clauses", "file", "Cláusulas"],
