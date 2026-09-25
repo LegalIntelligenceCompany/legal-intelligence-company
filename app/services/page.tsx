@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { AppShell } from '@/components/app-shell';
 import { workflows } from '@/lib/services';
 const localServices = [
- ['/word-review','Revisão em Word','Compare textos e exporte inserções e eliminações controladas num DOCX. Sem IA; não preserva a formatação de ficheiros originais.'],
+ ['/word-review','Revisão em Word','Importe DOCX simples ou compare textos. Exporte alterações controladas, sem chamadas à IA. Documentos complexos são recusados para evitar perdas.'],
  ['/quality-review','Avaliação humana de respostas','Registe fontes, erros, vigência, tempo e custo. Exporte ou guarde a avaliação no seu dossier privado.'],
  ['/clauses','Biblioteca de cláusulas','Guarde versões, contexto de utilização e aprovação pessoal. Sem IA.'],
  ['/anonymize','Anonimização assistida','Detecte padrões de dados pessoais e escolha substituições. Processamento local com revisão humana.'],

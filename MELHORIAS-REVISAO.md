@@ -1,21 +1,33 @@
 # Revisão, evidência e avaliação — 25/09/2026
 
-Incremento sem novas dependências, chamadas pagas ou activação de fornecedores.
+## Actualização: colaboração e importação Word
 
-## Utilizar depois do deploy
+Esta secção substitui as limitações anteriores relativas a partilha e importação simples; as restantes limitações continuam aplicáveis.
 
-1. Serviços jurídicos → **Revisão em Word** (`/word-review`): colar original e proposta, identificar revisor e exportar DOCX. As alterações são inserções/eliminações por parágrafo, incluindo marcas de parágrafo. Não importa ficheiros existentes nem conserva tabelas, imagens, cabeçalhos ou formatação de um contrato. Confirmar no Word o resultado de aceitar/rejeitar alterações antes de utilizar profissionalmente.
-2. **Dossiers** (`/library`): acrescentar fontes com URL, artigo/processo/página, versão ou limitação de vigência, data e excerto. A declaração de conferência exige estes campos e é anulada ao editar a fonte. Não há consulta automática da fonte, certificação ou base jurídica licenciada.
-3. Em cada nota, **Preparar nova versão sem alterar o original** cria um rascunho; Guardar cria um registo novo. Os registos mantêm as datas e podem ser exportados. Não há árvore de revisões nem auditoria imutável: o titular pode apagar os registos. Os dossiers continuam pessoais, protegidos pelas permissões existentes; não há partilha de dossiers com equipas neste incremento.
-4. Serviços jurídicos → **Avaliação humana de respostas** (`/quality-review`): preencher caso, resposta e critérios, documentar evidência, tempo e custo conhecidos. Exportar ou guardar expressamente num dossier pessoal. Critérios começam pendentes. O nome é declarado e não verifica a qualidade de advogado. Não produz uma avaliação automática nem uma prova de superioridade.
+- O titular pode conceder **edição** ou leitura a membros de uma equipa existente. Editores acrescentam notas e guardam novas versões; não sobrescrevem nem apagam originais. O titular gere permissões e elimina conteúdo. Os registos novos incluem a conta autora e a referência à versão anterior. Isto é edição por versões, não co-edição simultânea de texto.
+- Permissões são aplicadas na base de dados, não apenas nos botões. Revogar, sair da equipa ou remover o titular da equipa termina o acesso. Regressar à equipa não repõe concessões anteriores. As cópias já exportadas não podem ser revogadas. Novos dossiers continuam privados.
+- Word aceita importação **local** de DOCX até 5 MB e 10 MB descomprimidos. Preserva a estrutura e os estilos de documentos simples; o texto alterado usa a formatação inicial do parágrafo. Para esse modo, deve manter-se o número de parágrafos. Não envia os ficheiros para servidores ou IA. Existe alternativa explícita de exportação sem a formatação original.
+- Tabelas, imagens no corpo, campos, marcadores, revisões preexistentes, macros e relações externas são recusados. Cabeçalhos/rodapés são conservados, não revistos. Não anunciar compatibilidade universal com Word nem suplemento nativo.
 
-Não é necessária nova migração SQL: os metadados das fontes usam o campo JSON existente. Mantêm-se os limites de 100 fontes e aproximadamente 59 KB de metadados por nota. Nenhuma chave, tarifa, saldo, plano ou sinalizador comercial foi alterado.
+### Activação desta actualização
 
-## Ainda não implementado / dependências reais
+1. Fazer Push origin e esperar pelo deploy Ready.
+2. Abrir `/setup/services`, copiar o SQL e executar uma vez no projecto Supabase correcto. Inclui 007, 008 e **019_dossier_sharing.sql** e pressupõe a configuração de equipas 002. Não apagar tabelas nem desligar RLS. Os dossiers existentes são conservados; autores antigos não são inventados.
+3. Em Dossiers, seleccionar um dossier próprio → Consultar acessos e membros → escolher equipa, membro e **Edição** → Guardar permissão. Confirmar conscientemente a divulgação de todas as notas, incluindo futuras.
+4. O membro entra com a sua própria conta e encontra o dossier com a indicação “equipa (edição)”. Pode guardar notas ou preparar uma nova versão. O titular pode mudar para leitura ou revogar.
 
-- Cobertura jurídica exaustiva, licenciada e versionada de Portugal/UE; verificação automática de excertos e vigência.
-- Importação e redline de DOCX arbitrários, preservação de formatação e suplemento nativo do Word.
-- Partilha de dossiers com permissões por membro e auditoria imutável.
-- Campanha de avaliação por juristas identificados, casos de referência validados, comparação estatística com concorrentes e medições automáticas.
+Não foram activados pagamentos, modelos externos ou consumo pago. A migração ainda tem de ser aplicada no Supabase real; os testes locais não o fazem.
 
-Estas capacidades não devem ser anunciadas como existentes. A nova grelha é uma ferramenta para começar a recolher avaliações reais, não uma substituição dessas avaliações.
+## Evidência e avaliação já disponíveis
+
+- Nos dossiers, fontes com URL, artigo/processo/página, versão ou limitação de vigência, data e excerto. A conferência é manual; editar a fonte retira a marca de conferida.
+- Em /quality-review, grelha de avaliação humana, critérios inicialmente pendentes, evidência obrigatória para classificações, exportação ou gravação num dossier. Editores podem guardar avaliações em dossiers partilhados. Nome e qualificações do revisor são declarados, não verificados.
+- Sem chamadas pagas, instalação de novos pacotes ou activação comercial.
+
+## O que não se deve anunciar como concluído
+
+- Base jurídica exaustiva/licenciada e verificação automática da vigência.
+- Compatibilidade universal com DOCX, edição de tabelas/imagens/campos complexos ou suplemento nativo do Word.
+- Co-edição em tempo real, auditoria imutável ou preservação de registos eliminados pelo titular.
+- Campanha de avaliação por juristas identificados ou prova estatística de superioridade face a concorrentes.
+- Aprovação jurídica/fiscal/Stripe ou prontidão comercial integral: estes novos testes verificam as funcionalidades alteradas, não substituem essas aprovações.
