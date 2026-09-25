@@ -8,6 +8,14 @@ const services=load('../lib/services.ts');
 const assistant=load('../lib/assistant.ts',{'./services':services,'./legal-research':research});
 const library=load('../lib/library.ts',{'./legal-research':research,'./clauses':load('../lib/clauses.ts')});
 const id='11111111-1111-4111-8111-111111111111';
+test('source evidence survives validation and export without automatic approval',()=>{
+ const source={title:'Fonte de teste',url:'https://diariodarepublica.pt/',excerpt:'Excerto fictício',reference:'Artigo fictício',version:'Vigência não confirmada',consulted:'2026-09-25',reviewed:true};
+ assert.deepEqual(library.librarySources([source]),[source]);
+ assert.equal(library.librarySources([{title:source.title,url:source.url}])[0].reviewed,undefined);
+ for(const patch of [{consulted:'2026-02-30'},{reviewed:'true'},{excerpt:''},{excerpt:'a'.repeat(4001)}])assert.throws(()=>library.librarySources([{...source,...patch}]));
+ assert.throws(()=>library.librarySources(Array(100).fill(source).map(s=>({...s,excerpt:'a'.repeat(1000)}))));
+ assert.match(library.exportDossier({title:'Teste',description:'',kind:'dossier'},[{title:'Nota',created_at:'2026-09-25',body:'Teste',sources:[source]}]),/Excerto fictício/);
+});
 const base={requestId:id,mode:'research',profile:'Geral',country:'Portugal',question:'Teste',history:[],documentIds:[],consent:true};
 test('collection services require one to five unique scoped PDFs and matching workflow',()=>{
  for(const workflow of ['evidence','dossier-search']){
