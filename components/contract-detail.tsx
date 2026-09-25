@@ -6,6 +6,7 @@ import { documentError, contractStatus, fileSize, type Contract } from "@/lib/do
 import type { Company } from "./company-workspace";
 import { ContractUpload } from "./contract-upload";
 import { ContractAnalysis } from "./contract-analysis";
+import {PrivatePdfPreview} from './private-pdf-preview';
 
 export function ContractDetail({ company, id }: { company: Company; id: string }) {
   const [record, setRecord] = useState<Contract | null>(null);
@@ -52,6 +53,7 @@ export function ContractDetail({ company, id }: { company: Company; id: string }
     {loading ? <p role="status">A carregar contrato…</p> : !record ? <section className="card team-panel"><h2>Contrato indisponível</h2><p>Este contrato não existe na empresa seleccionada ou a sua conta não tem acesso.</p><button className="btn btn-secondary" onClick={load}>Tentar novamente</button></section> : <>
       <section className="card team-panel"><h2 className="team-email">{record.filename}</h2><p className="team-muted">{fileSize(record.byte_size)} · Registado em {new Date(record.created_at).toLocaleString("pt-PT")}</p><p><span className="team-badge">{contractStatus(record.status)}</span></p><p>Empresa: <strong>{company.name}</strong></p>
         {record.status === "uploaded" && <button className="btn btn-primary" disabled={busy} onClick={download}>{busy ? "A descarregar…" : "Descarregar documento"}</button>}
+        {record.status === "uploaded" && <PrivatePdfPreview key={record.id} contract={record}/>}
         {record.status === "uploading" && <><p>O envio não foi confirmado. Se o ficheiro já terminou de carregar, pode recuperar a confirmação.</p><button className="btn btn-secondary" disabled={busy} onClick={recover}>{busy ? "A verificar…" : "Verificar ficheiro guardado"}</button></>}
       </section>
       {record.status === "uploading" && <ContractUpload company={company} existing={record} onSaved={() => void load()}/>}

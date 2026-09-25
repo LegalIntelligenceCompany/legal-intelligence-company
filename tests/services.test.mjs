@@ -5,7 +5,7 @@ import ts from 'typescript';
 import * as research from '../lib/legal-research.ts';
 function load(path,deps={}){const source=ts.transpileModule(readFileSync(new URL(path,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2023}}).outputText;const m={exports:{}};new Function('require','module','exports',source)(n=>{if(!(n in deps))throw Error(n);return deps[n];},m,m.exports);return m.exports;}
 const services=load('../lib/services.ts');
-const assistant=load('../lib/assistant.ts',{'./services':services,'./legal-research':research});
+const assistant=load('../lib/assistant.ts',{'./services':services,'./legal-research':research,'./citation-evidence':load('../lib/citation-evidence.ts',{'./legal-research':research})});
 const library=load('../lib/library.ts',{'./legal-research':research,'./clauses':load('../lib/clauses.ts')});
 const id='11111111-1111-4111-8111-111111111111';
 test('source evidence survives validation and export without automatic approval',()=>{

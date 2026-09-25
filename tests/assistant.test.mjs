@@ -10,7 +10,7 @@ function load(path, deps, env = {}) {
   const module = { exports: {} }; new Function("require", "module", "exports", "process", "console", source)(name => { if (!(name in deps)) throw new Error(name); return deps[name]; }, module, module.exports, { env: { AI_EXECUTION_ENABLED: "true", OPENAI_API_KEY: "test-only", OPENAI_MODEL: "gpt-5-mini", ...env } }, { warn() {} }); return module.exports;
 }
 const services = load("../lib/services.ts", {});
-const assistant = load("../lib/assistant.ts", { "./legal-research": research, "./services": services });
+const assistant = load("../lib/assistant.ts", { "./legal-research": research, "./services": services, './citation-evidence':load('../lib/citation-evidence.ts',{'./legal-research':research}) });
 const id = "10000000-0000-4000-8000-000000000001", org = "20000000-0000-4000-8000-000000000001", doc = "30000000-0000-4000-8000-000000000001";
 const base = { requestId: id, mode: "research", profile: "Estudante", country: "Portugal", question: "Explique um conceito", history: [], documentIds: [], consent: true };
 test('new private services preserve billing guards and never enable web tools',async()=>{

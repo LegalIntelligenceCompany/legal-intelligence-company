@@ -1,4 +1,5 @@
 import { safeSourceUrl } from "./legal-research";
+import {attributedText} from './citation-evidence';
 import { isWorkflow, workflows, workflowInstructions, type Workflow } from "./services";
 
 export const modes = ["research", "document", "compare", "obligations", "timeline", "collection", "private-text"] as const;
@@ -74,7 +75,7 @@ ${input.mode === "compare" ? "Compara A com B: adições, remoções, alteraçõ
 }
 
 export function reportText(result: AssistantResult) {
-  return `Legal Intelligence Company — apoio à investigação e revisão\nGerado: ${result.generatedAt}\nRevisão humana necessária. ${result.researched ? "Pesquisa web limitada; confirmar vigência e aplicabilidade nas fontes." : "Sem pesquisa web; confirmar excertos no documento."}\n\n${result.text}\n\nFontes:\n${[...new Map(result.citations.map(c => [c.url, c])).values()].map(c => `${c.title}: ${c.url}`).join("\n")}`;
+  return `Legal Intelligence Company — apoio à investigação e revisão\nGerado: ${result.generatedAt}\nRevisão humana necessária. ${result.researched ? "Pesquisa web limitada; confirmar vigência e aplicabilidade nas fontes." : "Sem pesquisa web; confirmar excertos no documento."}\n\n${attributedText(result)}`;
 }
 
 export function calendarReminder(title: string, date: string) {

@@ -8,6 +8,8 @@ import { SaveResearch } from './save-research';
 import {readAssistantResponse,assistantStages} from '@/lib/assistant-stream';
 import {useServiceFunding} from './service-funding';
 import { calendarReminder, profiles, reportText, type AssistantMode, type AssistantResult } from "@/lib/assistant";
+import {citationEvidence,isCitationMarker} from '@/lib/citation-evidence';
+import {ReportActions} from './report-actions';
 
 export function downloadReport(text: string, name: string, type = "text/plain;charset=utf-8") {
   const url = URL.createObjectURL(new Blob([text], { type }));
@@ -16,9 +18,10 @@ export function downloadReport(text: string, name: string, type = "text/plain;ch
 }
 export function Answer({ result }: { result: AssistantResult }) {
   const parts: React.ReactNode[] = []; let last = 0;
-  result.citations.forEach((c, i) => { parts.push(result.text.slice(last, c.start)); parts.push(<a className="source-link" key={i} href={c.url} target="_blank" rel="noopener noreferrer">[{i + 1}: {c.title.trim() || 'Consultar fonte'}]</a>); last = c.end; });
+  const evidence=citationEvidence(result),sources=[...new Map(evidence.map(c=>[c.url,c])).values()];
+  evidence.forEach((c, i) => { parts.push(result.text.slice(last, c.start));const cited=result.text.slice(c.start,c.end);if(!isCitationMarker(cited))parts.push(<mark className="cited-passage" key={'text'+i}>{cited}</mark>);parts.push(<a className="source-link citation-chip" key={i} href={c.url} title={c.title} aria-label={`Fonte ${c.number}: ${c.title.trim()||'Consultar fonte'}`} target="_blank" rel="noopener noreferrer">[{c.number}]</a>); last = c.end; });
   parts.push(result.text.slice(last));
-  return <div className="assistant-answer">{parts}</div>;
+  return <><div className="assistant-answer">{parts}</div>{sources.length>0&&<section className="evidence-panel" aria-label="Fontes e afirmações associadas"><h3>Fontes e afirmações associadas</h3><p className="assistant-small">Estas ligações são as atribuições da resposta. O trecho abaixo pertence à resposta da IA, não é um excerto literal da fonte. A existência da ligação não confirma a exactidão nem a vigência.</p>{sources.map(s=><details key={s.url}><summary><span className="source-number">{s.number}</span> {s.title||new URL(s.url).hostname} <span className="team-badge">{s.official?'Domínio oficial':'Outra fonte'}</span></summary><p><a className="source-link" href={s.url} target="_blank" rel="noopener noreferrer">Abrir fonte original — {new URL(s.url).hostname}</a></p><p className="assistant-small">Resposta gerada em {new Date(result.generatedAt).toLocaleString('pt-PT')}. Vigência e suporte: por conferir no original.</p>{[...new Set(evidence.filter(c=>c.url===s.url).map(c=>c.context))].map((context,i)=><blockquote key={i}>{context}</blockquote>)}</details>)}</section>}<ReportActions title="Resposta e fontes" text={reportText(result)}/></>;
 }
 const starters = ["Como encontrar a versão em vigor de uma lei portuguesa?", "Explica a diferença entre jurisprudência e legislação, com fontes.", "Ajuda-me a pesquisar acórdãos sobre cláusulas contratuais gerais."];
 

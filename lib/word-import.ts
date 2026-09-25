@@ -34,7 +34,27 @@ export async function readWordZip(input:Uint8Array):Promise<Record<string,Uint8A
 function parse(bytes:Uint8Array){const text=decoder.decode(bytes);if(/<!DOCTYPE|<!ENTITY/i.test(text))invalid();const doc=new DOMParser().parseFromString(text,'application/xml');if(doc.getElementsByTagName('parsererror').length)invalid();return doc;}
 function children(element:Element){return Array.from(element.children);}
 function allowed(element:Element,names:string[]){return element.namespaceURI===W&&names.includes(element.localName);}
-export type ImportedWord={files:Record<string,Uint8Array>;text:string};
+export type ImportedWord={files:Record<string,Uint8Array>;text:string;locations:string[]};
+function documentParagraphs(body:Element){
+ const paragraphs:Element[]=[],locations:string[]=[];let tableCount=0;
+ function walk(container:Element,location:string,depth=0){
+  if(depth>8)throw Error('Tabelas demasiado aninhadas. Prepare uma cópia mais simples.');
+  let localParagraph=0;
+  const permitted=container.localName==='body'?['p','tbl','sectPr']:['p','tbl','tcPr'];
+  for(const element of children(container)){
+   if(!allowed(element,permitted))throw Error('O documento contém estruturas não suportadas. Nada foi removido ou convertido.');
+   if(element.localName==='p'){paragraphs.push(element);locations.push(location?`${location} · parágrafo ${++localParagraph}`:`Parágrafo ${paragraphs.length}`);}
+   if(element.localName==='tbl'){
+    const table=++tableCount;if(children(element).some(e=>!allowed(e,['tblPr','tblGrid','tr'])))invalid();
+    children(element).filter(e=>e.localName==='tr').forEach((row,r)=>{
+     if(children(row).some(e=>!allowed(e,['trPr','tc'])))invalid();
+     children(row).filter(e=>e.localName==='tc').forEach((cell,c)=>walk(cell,`Tabela ${table} · linha ${r+1} · célula ${c+1}`,depth+1));
+    });
+   }
+  }
+ }
+ walk(body,'');return {paragraphs,locations};
+}
 export async function importWord(bytes:Uint8Array):Promise<ImportedWord>{
  const files=await readWordZip(bytes);
  for(const [name,data] of Object.entries(files))if(name.endsWith('.xml')||name.endsWith('.rels')){
@@ -46,8 +66,8 @@ export async function importWord(bytes:Uint8Array):Promise<ImportedWord>{
   if(name.endsWith('.rels')&&Array.from(doc.getElementsByTagNameNS('*','Relationship')).some(r=>r.getAttribute('TargetMode')==='External'||/oleObject|aFChunk|attachedTemplate/i.test(r.getAttribute('Type')||'')))invalid();
  }
  const doc=parse(files['word/document.xml']),bodies=doc.getElementsByTagNameNS(W,'body'),body=bodies[0];if(doc.documentElement.namespaceURI!==W||doc.documentElement.localName!=='document'||bodies.length!==1||body.parentNode!==doc.documentElement)invalid();
- if(children(body).some(e=>!allowed(e,['p','sectPr'])))throw Error('Este DOCX contém tabelas ou estruturas complexas. Não foi importado para evitar perder conteúdo.');
- const paragraphs=children(body).filter(e=>allowed(e,['p']));if(paragraphs.length>2000)invalid();
+ if(Array.from(body.getElementsByTagNameNS(W,'*')).some(e=>['ins','del','moveFrom','moveTo','pPrChange','rPrChange','tblPrChange','tblGridChange','trPrChange','tcPrChange','cellIns','cellDel','cellMerge','sectPrChange'].includes(e.localName)))throw Error('O documento já contém alterações registadas. Aceite ou rejeite essas alterações numa cópia antes de importar.');
+ const {paragraphs,locations}=documentParagraphs(body);if(paragraphs.length>2000)invalid();
  const lines=paragraphs.map(p=>{
   if(children(p).some(e=>!allowed(e,['pPr','r'])))throw Error('O documento contém revisões, campos, ligações ou marcadores não suportados. Prepare uma cópia simples antes de importar.');
   // Reject existing revisions also inside paragraph/run formatting.
@@ -57,11 +77,11 @@ export async function importWord(bytes:Uint8Array):Promise<ImportedWord>{
    return children(r).map(e=>e.localName==='t'?e.textContent||'':e.localName==='tab'?'\t':'').join('');
   }).join('');
  });
- const text=lines.join('\n');if(!text.trim()||text.length>60000)throw Error('O texto deve ter entre 1 e 60 000 caracteres.');return {files,text};
+ const text=lines.join('\n');if(!text.trim()||text.length>60000)throw Error('O texto deve ter entre 1 e 60 000 caracteres.');return {files,text,locations};
 }
 export function reviseImportedWord(source:ImportedWord,proposed:string,author:string):Uint8Array{
  if(!author.trim()||author.length>120||!proposed.trim()||proposed.length>60000||/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(proposed))throw Error('Verifique o texto e o nome do revisor.');
- const doc=parse(source.files['word/document.xml']),body=doc.getElementsByTagNameNS(W,'body')[0],paragraphs=children(body).filter(p=>allowed(p,['p']));
+ const doc=parse(source.files['word/document.xml']),body=doc.getElementsByTagNameNS(W,'body')[0],{paragraphs}=documentParagraphs(body);
  const before=source.text.split('\n'),after=proposed.replace(/\r\n?/g,'\n').split('\n');
  if(after.length!==before.length)throw Error('Para preservar a formatação, mantenha o número de parágrafos. Pode mudar para exportação de texto simples para inserir ou eliminar parágrafos.');
  let id=0;const stamp=new Date().toISOString();

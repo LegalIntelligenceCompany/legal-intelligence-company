@@ -11,6 +11,7 @@ import {commercialMeterEnabled,commercialFundingInfo,meterMessages,reserveCommer
 import {reserveCommercialService,meterConfiguration} from '@/lib/commercial-meter';
 import {reviewerCatalogue,configuredReviewer} from '@/lib/reviewer-catalogue';
 import {externalReview,checkExternalModel} from '@/lib/external-review';
+import {followUpHistory,researchId} from '@/lib/research-context';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=60;
@@ -19,10 +20,20 @@ const json=(data:unknown,status=200)=>NextResponse.json(data,{status,headers});
 const fail=(code:string,status=400)=>json({error:meterMessages[code]||researchErrors[code]||pilotMessages[code]||researchErrors.PROVIDER,code},status);
 async function context(){const client=await createClient(true);const auth=await client?.auth.getUser();const user=auth?.data.user;const admin=createAdminClient();return {user,admin};}
 // Read-only recovery never submits a generation or consumes a new reservation.
-export async function GET(){
+export async function GET(request:Request){
  const {user,admin}=await context();if(!user||!admin)return fail('FORBIDDEN',401);
- const found=await admin.from('research_jobs').select('*').eq('owner_id',user.id).gt('expires_at',new Date().toISOString()).order('created_at',{ascending:false}).limit(1).maybeSingle();
+ const params=request?new URL(request.url).searchParams:new URLSearchParams();
+ const id=params.get('id');if(id&&!researchId(id))return fail('INVALID_REQUEST');
+ if(params.get('history')==='1'){
+  const list=await admin.from('research_jobs').select('id,question:input->>question,state,model,created_at,expires_at').eq('owner_id',user.id).gt('expires_at',new Date().toISOString()).order('created_at',{ascending:false}).limit(50);
+  if(list.error)return fail('SETUP',503);
+  return json({history:list.data??[]});
+ }
+ let query=admin.from('research_jobs').select('*').eq('owner_id',user.id).gt('expires_at',new Date().toISOString());
+ if(id)query=query.eq('id',id);
+ const found=await query.order('created_at',{ascending:false}).limit(1).maybeSingle();
  if(found.error)return fail('SETUP',503);
+ if(id&&!found.data)return fail('FORBIDDEN',404);
  let funding:unknown={mode:'pilot'};
  if(paidAIAccessError(user)==='BILLING_TEST_ONLY'){
   if(!commercialMeterEnabled())funding={mode:'disabled'};
@@ -66,6 +77,16 @@ export async function POST(request:Request){
    else if(!allowedResearchModel(model))return fail('MODEL',403);
    const existing=await admin.from('research_jobs').select('*').eq('id',input.requestId).eq('owner_id',user.id).maybeSingle();
    if(existing.error)return fail('SETUP',503);if(existing.data)return json({job:publicJob(existing.data)});
+   // Follow-ups use only this account's unexpired, completed research. A dossier
+   // or another user's content is never silently sent to the public web search.
+   input.history=[];
+   if(body.parentId!==undefined){
+    if(!researchId(body.parentId))return fail('INVALID_REQUEST');
+    const parent=await admin.from('research_jobs').select('*').eq('id',body.parentId).eq('owner_id',user.id).eq('state','completed').gt('expires_at',now()).maybeSingle();
+    if(parent.error)return fail('SETUP',503);
+    if(!parent.data?.result)return fail('FORBIDDEN',403);
+    input.history=followUpHistory(parent.data.input,parent.data.result);
+   }
    if(external)await checkExternalModel(configuredReviewer(model));
    // Availability check has no generation and happens before any reservation.
    if(model!==PILOT_MODEL&&!external){try{await openai.models.retrieve(model);}catch{return fail('MODEL_UNAVAILABLE',503);}}

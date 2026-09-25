@@ -8,6 +8,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import * as services from '../lib/services.ts';
 import * as transport from '../lib/assistant-stream.ts';
 const source = ts.transpileModule(readFileSync(new URL("../components/assistant-panel.tsx", import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
+const evidence={};new Function('require','exports',ts.transpileModule(readFileSync(new URL('../lib/citation-evidence.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2023}}).outputText)(()=>({safeSourceUrl:s=>s.startsWith('https://')?s:null}),evidence);
 function render(states = {}, organizationId, workflow) {
   let index = 0;
   const deps = {
@@ -20,7 +21,9 @@ function render(states = {}, organizationId, workflow) {
     "@/lib/services": services,
     '@/lib/assistant-stream':transport,
     "./save-research": { SaveResearch: () => null },
-    "@/lib/assistant": { profiles: ["Geral", "Estudante", "Professor", "Advogado", "Empresa"] },
+    './report-actions':{ReportActions:()=>null},
+    '@/lib/citation-evidence':evidence,
+    "@/lib/assistant": { profiles: ["Geral", "Estudante", "Professor", "Advogado", "Empresa"], reportText:r=>r.text },
   };
   const exports = {}; new Function("require", "exports", source)(name => { if (!(name in deps)) throw new Error(name); return deps[name]; }, exports);
   return renderToStaticMarkup(React.createElement(exports.AssistantPanel, { organizationId, workflow }));
@@ -49,7 +52,7 @@ test("send remains disabled without consent and private modes explain no web sea
 });
 test("model text is escaped, provider citations are inline and export is available", () => {
   const text = "<script>alert(1)</script> [fonte]";
-  const html = render({ 5: "ready", 9: [{ question: "Teste", result: { text, generatedAt: "2026-09-21T12:00:00Z", researched: true, citations: [{ start: 26, end: 33, title: "Fonte", url: "https://diariodarepublica.pt/test" }] } }] });
+  const html = render({ 5: "ready", 9: [{ question: "Teste", result: { text, generatedAt: "2026-09-21T12:00:00Z", researched: true, citations: [{ start: text.indexOf('[fonte]'), end: text.length, title: "Fonte", url: "https://diariodarepublica.pt/test" }] } }] });
   assert.ok(!html.includes("<script>")); assert.match(html, /&lt;script&gt;/); assert.match(html, /noopener noreferrer/); assert.match(html, /Exportar resposta e fontes/); assert.match(html, /vigência a confirmar/);
 });
 test("calendar requires human confirmation and does not claim automated email", () => {

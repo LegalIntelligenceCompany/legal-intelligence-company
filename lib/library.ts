@@ -3,6 +3,11 @@ import { readClause } from './clauses';
 export type Dossier = { id:string; kind:'dossier'|'watch'|'clause'; title:string; description:string; created_at:string; canEdit?:boolean; canManage?:boolean };
 export type LibrarySource = {title:string;url:string;excerpt?:string;reference?:string;version?:string;consulted?:string;reviewed?:boolean};
 export type LibraryEntry = { id:string; dossier_id:string; title:string; body:string; sources:LibrarySource[]; created_at:string; created_by?:string|null; revision_of?:string|null };
+export function linkedDocument(body:string):{contractId:string;filename:string}|null{try{const v=JSON.parse(body);return v?.type==='lic-document-link-v1'&&libraryId(v.contractId)&&typeof v.filename==='string'&&v.filename.length<=255?{contractId:v.contractId,filename:v.filename}:null;}catch{return null;}}
+export function filterEntries(entries:LibraryEntry[],query:string,scope:'all'|'sources'|'documents'|'revisions'='all'){
+ const normal=(v:string)=>v.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-PT');const words=normal(query).split(/\s+/).filter(Boolean);
+ return entries.filter(e=>(scope==='all'||scope==='sources'&&e.sources.length>0||scope==='documents'&&!!linkedDocument(e.body)||scope==='revisions'&&!!e.revision_of)&&words.every(w=>normal([e.title,e.body,...e.sources.flatMap(s=>[s.title,s.reference??'',s.excerpt??''])].join(' ')).includes(w)));
+}
 export function libraryId(value: unknown): value is string { return typeof value==='string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value); }
 export function libraryText(value:unknown, max:number, empty=false) { if(typeof value!=='string'||value.length>max||(!empty&&!value.trim())) throw new Error('INVALID'); return value.trim(); }
 export function librarySources(value:unknown) {

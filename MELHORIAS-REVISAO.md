@@ -1,5 +1,29 @@
 # Revisão, evidência e avaliação — 25/09/2026
 
+## Actualização técnica: chat, fontes, exportação e dossiers
+
+Esta secção descreve a versão mais recente e substitui as limitações anteriores relativas a tabelas Word, histórico da pesquisa e limpeza dos pedidos de pesquisa.
+
+- Chat: histórico pesquisável de até 50 pesquisas não expiradas, recuperação por identificador e seguimento com até dois pares de perguntas/respostas. O contexto é obtido no servidor e pertence à conta autenticada; o cliente não pode injectar o histórico de outra conta. Mantém-se a retenção de 24 horas, sem alargamento silencioso.
+- Acompanhamento com etapas reais e tempo decorrido. Falhas de comunicação bloqueiam novo envio até recuperar; não há repetição automática de geração paga. A resposta final aparece depois da revisão, não é streaming de um rascunho por validar. O pedido ao servidor tem limite de espera; atingir esse limite não cancela a geração no fornecedor.
+- Fontes: citações junto do trecho, numeração coerente no ecrã e nas exportações e painel com os parágrafos associados. URLs inseguras e intervalos inválidos são rejeitados. “Domínio oficial” classifica o endereço, não certifica a afirmação. O trecho mostrado é da resposta, não um excerto recolhido da fonte. Não implementa verificação semântica automática nem certificação da vigência.
+- Exportação das respostas e dossiers para Word editável, cópia de texto e pré-visualização A4 para imprimir/guardar como PDF. Texto não fiável é escapado; não é executado como HTML.
+- Word: importação local de parágrafos **e tabelas**, revisão por célula/parágrafo e exportação com alterações registadas, preservando a estrutura. Continua sem aceitar imagens no corpo, campos, macros, ligações externas e revisões preexistentes; não promete compatibilidade com qualquer DOCX.
+- PDF: consulta do original dentro do contrato, com indicação da página física e acesso pelo armazenamento autenticado. Sem URL pública. Não inclui OCR, extracção local de texto ou prova de que a IA leu todas as páginas. A apresentação depende do suporte PDF do navegador; permanece a descarga do documento.
+- Dossiers: pesquisa de título/contexto, pesquisa de conteúdo/fontes sem acentos, filtros de referências/documentos/revisões, alteração de título/descrição e ligação a documentos existentes. Guardar a referência exige confirmação da divulgação do nome aos membros do dossier e não concede acesso ao ficheiro. Renomear e eliminar uma nota não apaga o rascunho de outra nota.
+- A limpeza programada existente também remove pesquisas expiradas. Continua a depender de `CRON_SECRET` e da execução da tarefa no deployment; o código não prova que a configuração real está activa.
+
+### Publicação desta actualização
+
+Não acrescenta migração SQL, dependências, tarifas, modelos activos ou pagamentos. Pressupõe as migrações anteriormente instaladas. Fazer Push origin do commit desta alteração e aguardar Ready na Vercel. Não repetir SQL para publicar estas melhorias.
+
+### Verificação desta actualização
+
+- Testes de autenticação, isolamento, recuperação, continuação, não repetição de geração, citações, exportação e pesquisa local; TypeScript, lint e compilação de produção.
+- Testes SQL de partilha: leitura/edição, autoria, versões, revogação, saída da equipa, isolamento e repetibilidade.
+- Navegador local: tabela DOCX fictícia importada, célula editada e ficheiro descarregado. Inspecção do DOCX confirmou tabela preservada e elementos de inserção/eliminação com autoria. Não foi feita validação no Microsoft Word.
+- Nenhuma chamada paga de IA nem cobrança. Falta o ensaio autenticado da nova versão publicada; não se declara validação integral do site nem superioridade sobre outras plataformas.
+
 ## Actualização: colaboração e importação Word
 
 Esta secção substitui as limitações anteriores relativas a partilha e importação simples; as restantes limitações continuam aplicáveis.
