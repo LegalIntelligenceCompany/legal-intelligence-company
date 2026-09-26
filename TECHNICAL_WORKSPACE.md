@@ -1,5 +1,10 @@
 # Camada técnica LIC 020
 
+Estado operacional mais recente e bloqueios verificados no ambiente publicado:
+[verificação de 26/09/2026](VERIFICACAO-OPERACIONAL.md). Os ensaios descritos abaixo
+registam a implementação original e não devem ser confundidos com um restauro
+ou teste de carga do ambiente de produção.
+
 Esta actualização implementa ferramentas de trabalho e controlos verificáveis. Não
 activa pagamentos, não aumenta o orçamento de IA, não muda tarifas, não reactiva
 fornecedores desactivados e não constitui certificação de qualidade jurídica.

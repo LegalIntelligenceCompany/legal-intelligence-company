@@ -13,6 +13,31 @@ const url='https://site.test/api/reconcile?id=10000000-0000-4000-8000-0000000000
 test('reconciliation refuses non-owner and foreign origin without touching balances',async()=>{for(const [owner,origin] of [[false,'https://site.test'],[true,'https://evil.test']]){const api=load('../app/api/reconcile/route.ts',{'next/server':response,'@/lib/site-owner':{isSiteOwner:async()=>owner},'@/lib/supabase/admin':{createAdminClient:()=>{throw Error('must not access');}}});assert.equal((await api.POST(new Request(url,{method:'POST',headers:{origin}}))).status,403);}});
 test('reconciliation uses recorded actor and preserves unconfirmed reserves',async()=>{for(const error of [null,{message:'METER_UNCONFIRMED'}]){const store=db({data:{actor_id:'actor'},error:null});store.rpc=async(name,args)=>{assert.equal(name,'ai_meter_settle');assert.equal(args.p_actor,'actor');return {data:error?null:42,error};};const api=load('../app/api/reconcile/route.ts',{'next/server':response,'@/lib/site-owner':{isSiteOwner:async()=>true},'@/lib/supabase/admin':{createAdminClient:()=>store}});const r=await api.POST(new Request(url,{method:'POST',headers:{origin:'https://site.test'}}));assert.equal(r.status,error?409:200);if(!error)assert.equal(r.body.chargedCents,42);}});
 test('scheduled cleanup requires secret and deletes only expired records',async()=>{const store=db();const api=load('../app/api/maintenance/recovery/route.ts',{'next/server':response,'@/lib/supabase/admin':{createAdminClient:()=>store}},{CRON_SECRET:'x'.repeat(32)});assert.equal((await api.GET(new Request('https://site.test'))).status,401);assert.equal(store.calls.length,0);assert.equal((await api.GET(new Request('https://site.test',{headers:{authorization:'Bearer '+'x'.repeat(32)}}))).status,200);assert.ok(store.calls.some(c=>c[0]==='lt'&&c[1]==='expires_at'));});
+test('cleanup rejects missing, short or incorrect secrets before any database access',async()=>{
+ for(const [secret,header] of [[undefined,'Bearer undefined'],['short','Bearer short'],['x'.repeat(32),'Bearer wrong']]){
+  const api=load('../app/api/maintenance/recovery/route.ts',{'next/server':response,'@/lib/supabase/admin':{createAdminClient:()=>{throw Error('must not access');}}},{CRON_SECRET:secret});
+  assert.equal((await api.GET(new Request('https://site.test',{headers:{authorization:header}}))).status,401);
+ }
+});
+test('cleanup reports aggregate counts, retains current records and distinguishes partial migrations from failed cleanup',async()=>{
+ for(const mode of ['ok','audit-missing','failure','offline']){
+  const calls=[];
+  const store={from(table){const q={delete(options){calls.push({table,options});return q;},lt(column,cutoff){calls.push({table,column,cutoff});if(mode==='offline')throw Error('private database detail');return Promise.resolve({count:3,error:mode==='failure'?{message:'private database detail',code:'42501'}:mode==='audit-missing'&&table==='research_audit'?{code:'42P01'}:null});}};return q;}};
+  const api=load('../app/api/maintenance/recovery/route.ts',{'next/server':response,'@/lib/supabase/admin':{createAdminClient:()=>store}},{CRON_SECRET:'x'.repeat(32)});
+  const before=Date.now();const result=await api.GET(new Request('https://site.test',{headers:{authorization:'Bearer '+'x'.repeat(32)}}));
+  assert.equal(result.status,['failure','offline'].includes(mode)?503:200);
+  assert.ok(!JSON.stringify(result.body).includes('private'));
+  if(mode==='ok'||mode==='audit-missing'){
+   assert.equal(result.body.auditUnavailable,mode==='audit-missing');
+   assert.deepEqual(result.body.counts,{results:3,research:3,audit:mode==='audit-missing'?null:3});
+   const resultCutoffs=calls.filter(c=>c.column==='expires_at');assert.equal(resultCutoffs.length,2);
+   assert.ok(resultCutoffs.every(c=>Date.parse(c.cutoff)>=before&&Date.parse(c.cutoff)<=Date.now()));
+   const audit=calls.find(c=>c.table==='research_audit'&&c.column);assert.equal(audit.column,'occurred_at');
+   assert.ok(Math.abs(Date.parse(audit.cutoff)+90*86400000-before)<2000);
+   assert.deepEqual(calls.filter(c=>c.options).map(c=>c.table),['service_results','research_jobs','research_audit']);
+  }
+ }
+});
 test('opted-in transcription stores a validated result once; missing migration blocks generation',async()=>{
  for(const missing of [false,true]){
   const store=db({data:[{id:'one'}],error:missing?{message:'missing table'}:null});store.rpc=async()=>({error:null});let generations=0,afters=0;

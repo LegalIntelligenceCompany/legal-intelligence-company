@@ -2,6 +2,7 @@ node_modules
 .next
 .next-check
 .next-final-check
+.next-*
 work/
 tsconfig.tsbuildinfo
 .env*
