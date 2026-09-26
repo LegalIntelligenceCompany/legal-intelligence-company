@@ -4,3 +4,5 @@ overrides:
   postcss: ^8.5.23
 allowBuilds:
   unrs-resolver: false
+  # Its postinstall only prints a funding message; OCR assets are prebuilt.
+  tesseract.js: false
