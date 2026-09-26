@@ -2,28 +2,40 @@
   "name": "legal-intelligence-company",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@11.19.0",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "node scripts/prepare-document-assets.mjs && next dev",
+    "build": "node scripts/prepare-document-assets.mjs && next build",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/*.test.mjs"
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "test:sql": "node scripts/test-sql.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.49.1",
-    "next": "^15.2.1",
+    "@tesseract.js-data/eng": "1.0.0",
+    "@tesseract.js-data/por": "1.0.0",
+    "linkedom": "0.18.12",
+    "next": "^15.5.26",
     "openai": "^4.86.2",
+    "pdfjs-dist": "6.3.289",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "standardwebhooks": "1.1.1",
+    "tesseract.js": "7.0.0"
+  },
+  "overrides": {
+    "postcss": "^8.5.23"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
     "@types/node": "^22.13.10",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "eslint": "^9.21.0",
-    "eslint-config-next": "^15.2.1",
+    "eslint-config-next": "^15.5.26",
     "tailwindcss": "^4.0.9",
     "typescript": "^5.8.2",
     "typescript-eslint": "^8.70.0"

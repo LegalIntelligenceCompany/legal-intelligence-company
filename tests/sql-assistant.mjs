@@ -1,5 +1,5 @@
 // Isolated database test; no credentials or external services.
-import { PGlite } from "../work/sql-test/node_modules/@electric-sql/pglite/dist/index.js";
+import { PGlite } from "@electric-sql/pglite";
 import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 const db = new PGlite(); const actor = "10000000-0000-4000-8000-000000000001", other = "10000000-0000-4000-8000-000000000002";

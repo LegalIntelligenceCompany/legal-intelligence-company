@@ -1,4 +1,4 @@
-import {PGlite} from '../work/sql-test/node_modules/@electric-sql/pglite/dist/index.js';
+import {PGlite} from '@electric-sql/pglite';
 import {readFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
 const db=new PGlite(),actor='10000000-0000-4000-8000-000000000001',id=crypto.randomUUID();

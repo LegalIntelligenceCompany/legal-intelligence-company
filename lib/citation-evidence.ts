@@ -23,5 +23,6 @@ export function attributedText(result:AssistantResult){
  for(const citation of evidence){const span=result.text.slice(citation.start,citation.end);text+=result.text.slice(last,citation.start)+(isCitationMarker(span)?'':span+' ')+`[${citation.number}]`;last=citation.end;}
  text+=result.text.slice(last);
  const sources=[...new Map(evidence.map(c=>[c.url,c])).values()].map(c=>`[${c.number}] ${c.title}: ${c.url}`).join('\n');
- return text+'\n\nFontes atribuídas (suporte e vigência por conferir):\n'+(sources||'Sem ligações verificáveis nesta resposta.');
+ const checks=result.evidence?.map(e=>`Bloco ${e.block}: ${e.heading}\nFonte: ${e.url}\nExcerto: ${e.quote||'Não disponível'}\nCorrespondência literal: ${e.literalMatch?'localizada':'não confirmada'}\nApreciação da IA: ${e.assessment==='supports'?'suporte indicado':e.assessment==='contradicts'?'possível contradição':'fundamento insuficiente'}; exige revisão humana.`).join('\n\n');
+ return text+'\n\nFontes atribuídas (suporte e vigência por conferir):\n'+(sources||'Sem ligações verificáveis nesta resposta.')+(checks?'\n\nConferência de excertos (não certifica fundamento jurídico):\n'+checks:'');
 }

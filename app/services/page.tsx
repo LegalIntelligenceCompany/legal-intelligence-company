@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { AppShell } from '@/components/app-shell';
 import { workflows } from '@/lib/services';
 const localServices = [
+ ['/document-workbench','Leitura e OCR de PDF','Pesquise por página, leia digitalizações no dispositivo e compare o texto com a imagem original. Sem enviar documentos à IA.'],
+ ['/benchmarks','Comparação de qualidade','Compare respostas com casos de referência, critérios, erros, latência e custo. Sem gerar respostas pagas.'],
  ['/word-review','Revisão em Word','Importe DOCX simples ou compare textos. Exporte alterações controladas, sem chamadas à IA. Documentos complexos são recusados para evitar perdas.'],
  ['/quality-review','Avaliação humana de respostas','Registe fontes, erros, vigência, tempo e custo. Exporte ou guarde a avaliação no seu dossier privado.'],
  ['/clauses','Biblioteca de cláusulas','Guarde versões, contexto de utilização e aprovação pessoal. Sem IA.'],

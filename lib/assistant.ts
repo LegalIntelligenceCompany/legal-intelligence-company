@@ -8,7 +8,9 @@ export const profiles = ["Geral", "Estudante", "Professor", "Advogado", "Empresa
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export type AssistantInput = { requestId: string; mode: AssistantMode; profile: typeof profiles[number]; country: "Portugal" | "União Europeia"; question: string; material?: string; history: { role: "user" | "assistant"; content: string }[]; documentIds: string[]; organizationId?: string; consent: true; workflow?: Workflow; format?: string };
 export type Citation = { start: number; end: number; title: string; url: string };
-export type AssistantResult = { text: string; citations: Citation[]; researched: boolean; generatedAt: string; review?: "second-pass"; model?: string; chargedCents?: number };
+export type OriginalEvidence = {sourceId:number;url:string;title:string;text:string;retrievedAt:string;sha256:string;truncated:boolean};
+export type ClaimEvidence = {block:number;heading:string;sourceId:number;url:string;quote:string;literalMatch:boolean;assessment:'supports'|'contradicts'|'insufficient'};
+export type AssistantResult = { text: string; citations: Citation[]; researched: boolean; generatedAt: string; review?: "second-pass"; model?: string; chargedCents?: number; originals?:OriginalEvidence[]; evidence?:ClaimEvidence[] };
 export function validateAssistantInput(value: unknown): AssistantInput {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("INVALID_REQUEST");
   const v = value as Record<string, unknown>;

@@ -1,9 +1,12 @@
 node_modules
 .next
 .next-check
+.next-final-check
 work/
 tsconfig.tsbuildinfo
 .env*
 !.env.example
 .DS_Store
 *.log
+public/document-runtime/
+.pnpm-store/

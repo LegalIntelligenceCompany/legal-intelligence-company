@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
-import {PGlite} from '../work/sql-test/node_modules/@electric-sql/pglite/dist/index.js';
+import {PGlite} from '@electric-sql/pglite';
 const db=new PGlite();
 try {
  await db.exec(`create schema auth;create table auth.users(id uuid primary key,email_confirmed_at timestamptz);create role anon;create role authenticated;create role service_role bypassrls;create table organizations(id uuid primary key);create table organization_members(organization_id uuid,user_id uuid,role text);`);

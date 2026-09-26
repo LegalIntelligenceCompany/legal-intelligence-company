@@ -1,0 +1,17 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {Webhook} from 'standardwebhooks';
+import ts from 'typescript';
+const secret=Buffer.alloc(32,7).toString('base64');
+function fixture(){const receipts=new Map();let advances=0,missing=false,unchanged=false;
+ const admin={from(table){let key,values,op='select';const q={select(){return q;},eq(k,v){if(k==='event_id'||k==='response_id')key=v;return q;},upsert(v){values=v;op='upsert';return q;},update(v){values=v;op='update';return q;},single(){return Promise.resolve(run());},maybeSingle(){return Promise.resolve(run());},then(ok,bad){return Promise.resolve(run()).then(ok,bad);}};function run(){if(table==='research_jobs')return {data:missing?null:{id:'job'}};if(op==='upsert'&&!receipts.has(values.event_id))receipts.set(values.event_id,values);if(op==='update')Object.assign(receipts.get(key),values);return {data:receipts.get(key)||null};}return q;}};
+ const deps={standardwebhooks:{Webhook},'@/lib/supabase/admin':{createAdminClient:()=>admin},'@/lib/research-worker':{advanceStoredResearch:async()=>{advances++;return unchanged?{terminal:false,state:'draft',previousState:'draft'}:{terminal:true,state:'completed',previousState:'review'};}},'@/lib/research-jobs':{validResponseId:v=>typeof v==='string'&&/^resp_[a-z0-9]+$/.test(v)}};
+ const m={exports:{}};new Function('require','module','exports','process',ts.transpileModule(readFileSync(new URL('../app/api/research/webhook/route.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText)(n=>deps[n],m,m.exports,{env:{OPENAI_WEBHOOK_SECRET:secret}});
+ function request({id='evt_1',time=new Date(),payload={type:'response.completed',data:{id:'resp_123'}},tamper=false}={}){const raw=JSON.stringify(payload),signature=new Webhook(secret).sign(id,time,raw);return new Request('https://lic.test/api/research/webhook',{method:'POST',headers:{'webhook-id':id,'webhook-timestamp':String(Math.floor(time.getTime()/1000)),'webhook-signature':signature},body:tamper?raw+' ':raw});}
+ return {post:m.exports.POST,request,receipts,count:()=>advances,missing:v=>missing=v,unchanged:v=>unchanged=v};
+}
+test('signed completion advances without browser and duplicate delivery is read-only',async()=>{const f=fixture();assert.equal((await f.post(f.request())).status,200);assert.equal(f.count(),1);assert.equal((await f.post(f.request())).status,200);assert.equal(f.count(),1);assert.ok(f.receipts.get('evt_1').completed_at);});
+test('tampering, replay age and invalid identifiers cannot advance research',async()=>{const f=fixture();for(const opts of [{tamper:true},{time:new Date(Date.now()-600000)},{payload:{type:'response.completed',data:{id:'foreign'}}},{payload:null}])assert.equal((await f.post(f.request(opts))).status,400);assert.equal(f.count(),0);});
+test('completion before response binding asks provider to redeliver; same event later works',async()=>{const f=fixture();f.missing(true);assert.equal((await f.post(f.request())).status,503);assert.equal(f.count(),0);f.missing(false);assert.equal((await f.post(f.request())).status,200);assert.equal(f.count(),1);});
+test('queued work is not falsely acknowledged as completed',async()=>{const f=fixture();f.unchanged(true);assert.equal((await f.post(f.request())).status,503);assert.ok(!f.receipts.get('evt_1').completed_at);f.unchanged(false);assert.equal((await f.post(f.request())).status,200);});

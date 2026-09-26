@@ -1,6 +1,6 @@
 // Isolated PostgreSQL/WASM integration test. Never connects to Supabase or reads .env.local.
 // First: npm install --prefix work/sql-test --no-save --ignore-scripts @electric-sql/pglite
-import { PGlite } from "../work/sql-test/node_modules/@electric-sql/pglite/dist/index.js";
+import { PGlite } from "@electric-sql/pglite";
 import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 const db = new PGlite();

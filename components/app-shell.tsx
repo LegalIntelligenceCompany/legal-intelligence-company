@@ -10,6 +10,7 @@ const items = [
   ["/services", "file", "Serviços jurídicos"],
   ["/clauses", "file", "Cláusulas"],
   ["/library", "file", "Dossiers"],
+  ["/document-workbench", "file", "Leitura e OCR"],
   ["/alerts", "file", "Temas legislativos"],
   ["/chat", "file", "Chat jurídico"],
   ["/dashboard", "home", "Visão geral"],

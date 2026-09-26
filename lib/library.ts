@@ -1,12 +1,13 @@
 import { safeSourceUrl } from './legal-research';
 import { readClause } from './clauses';
+import {readCaseRecord,recordKinds} from './case-workspace';
 export type Dossier = { id:string; kind:'dossier'|'watch'|'clause'; title:string; description:string; created_at:string; canEdit?:boolean; canManage?:boolean };
 export type LibrarySource = {title:string;url:string;excerpt?:string;reference?:string;version?:string;consulted?:string;reviewed?:boolean};
 export type LibraryEntry = { id:string; dossier_id:string; title:string; body:string; sources:LibrarySource[]; created_at:string; created_by?:string|null; revision_of?:string|null };
 export function linkedDocument(body:string):{contractId:string;filename:string}|null{try{const v=JSON.parse(body);return v?.type==='lic-document-link-v1'&&libraryId(v.contractId)&&typeof v.filename==='string'&&v.filename.length<=255?{contractId:v.contractId,filename:v.filename}:null;}catch{return null;}}
 export function filterEntries(entries:LibraryEntry[],query:string,scope:'all'|'sources'|'documents'|'revisions'='all'){
  const normal=(v:string)=>v.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-PT');const words=normal(query).split(/\s+/).filter(Boolean);
- return entries.filter(e=>(scope==='all'||scope==='sources'&&e.sources.length>0||scope==='documents'&&!!linkedDocument(e.body)||scope==='revisions'&&!!e.revision_of)&&words.every(w=>normal([e.title,e.body,...e.sources.flatMap(s=>[s.title,s.reference??'',s.excerpt??''])].join(' ')).includes(w)));
+ return entries.filter(e=>{const record=readCaseRecord(e.body);return (scope==='all'||scope==='sources'&&(e.sources.length>0||record?.kind==='source')||scope==='documents'&&(!!linkedDocument(e.body)||record?.kind==='document')||scope==='revisions'&&!!e.revision_of)&&words.every(w=>normal([e.title,e.body,...e.sources.flatMap(s=>[s.title,s.reference??'',s.excerpt??''])].join(' ')).includes(w));});
 }
 export function libraryId(value: unknown): value is string { return typeof value==='string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value); }
 export function libraryText(value:unknown, max:number, empty=false) { if(typeof value!=='string'||value.length>max||(!empty&&!value.trim())) throw new Error('INVALID'); return value.trim(); }
@@ -20,8 +21,12 @@ export function librarySources(value:unknown) {
  if(new TextEncoder().encode(JSON.stringify(result)).length>59000)throw new Error('INVALID');return result;
 }
 export function sourceEvidence(s:LibrarySource){return `${s.title}: ${s.url}\nReferência: ${s.reference||'não indicada'}\nVersão / vigência declarada: ${s.version||'não confirmada'}\nConsultada em: ${s.consulted||'não indicado'}\nExcerto: ${s.excerpt||'não indicado'}\n${s.reviewed?'Conferida pelo utilizador; não é certificação jurídica.':'Por conferir.'}`;}
+export function entryText(body:string){
+ const r=readCaseRecord(body);if(r)return `${recordKinds[r.kind]}\nEstado declarado: ${r.status}\nJurisdição: ${r.jurisdiction}\nData / início: ${r.date||'não indicado'}\nAté: ${r.until||'não indicado'}\nReferência: ${r.reference||'não indicada'}\nFonte: ${r.url||'não indicada'}\nRegistos relacionados: ${r.related.join(', ')||'nenhum'}\n\n${r.text}`;
+ const link=linkedDocument(body);return link?`Documento: ${link.filename}\nID: ${link.contractId}\nO ficheiro original não está incluído nesta exportação.`:body;
+}
 export function exportDossier(dossier:Dossier, entries:LibraryEntry[]) {
- return `LIC — ${dossier.title}\n${dossier.description}\nExportado: ${new Date().toISOString()}\nConteúdo guardado pelo utilizador; não constitui verificação jurídica.\n\n`+entries.map(e=>{const c=readClause(e.body);const text=dossier.kind==='clause'?`${c.approved?'Aprovada pelo utilizador':'Rascunho — não aprovada'}\nContexto: ${c.usage||'Não indicado'}\n\n${c.text}`:e.body;return `${e.title}\nGuardado: ${e.created_at}\nAutor (conta): ${e.created_by||'não registado'}\nRevisão de: ${e.revision_of||'nota independente'}\n${text}\nFontes:\n${e.sources.map(sourceEvidence).join('\n\n')}`;}).join('\n\n---\n\n');
+ return `LIC — ${dossier.title}\n${dossier.description}\nExportado: ${new Date().toISOString()}\nConteúdo guardado pelo utilizador; não constitui verificação jurídica.\n\n`+entries.map(e=>{const c=readClause(e.body);const text=dossier.kind==='clause'?`${c.approved?'Aprovada pelo utilizador':'Rascunho — não aprovada'}\nContexto: ${c.usage||'Não indicado'}\n\n${c.text}`:entryText(e.body);return `${e.title}\nGuardado: ${e.created_at}\nAutor (conta): ${e.created_by||'não registado'}\nRevisão de: ${e.revision_of||'nota independente'}\n${text}\nFontes:\n${e.sources.map(sourceEvidence).join('\n\n')}`;}).join('\n\n---\n\n');
 }
 export function compareReports(before:string, after:string) {
  // Textual changes are NOT proof of a legislative amendment.

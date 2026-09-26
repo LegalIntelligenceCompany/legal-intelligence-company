@@ -22,6 +22,7 @@ function render(states = {}, organizationId, workflow) {
     '@/lib/assistant-stream':transport,
     "./save-research": { SaveResearch: () => null },
     './report-actions':{ReportActions:()=>null},
+    './claim-evidence':{ClaimEvidencePanel:()=>null},
     '@/lib/citation-evidence':evidence,
     "@/lib/assistant": { profiles: ["Geral", "Estudante", "Professor", "Advogado", "Empresa"], reportText:r=>r.text },
   };

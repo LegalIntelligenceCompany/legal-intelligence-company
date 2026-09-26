@@ -34,7 +34,7 @@ export async function readWordZip(input:Uint8Array):Promise<Record<string,Uint8A
 function parse(bytes:Uint8Array){const text=decoder.decode(bytes);if(/<!DOCTYPE|<!ENTITY/i.test(text))invalid();const doc=new DOMParser().parseFromString(text,'application/xml');if(doc.getElementsByTagName('parsererror').length)invalid();return doc;}
 function children(element:Element){return Array.from(element.children);}
 function allowed(element:Element,names:string[]){return element.namespaceURI===W&&names.includes(element.localName);}
-export type ImportedWord={files:Record<string,Uint8Array>;text:string;locations:string[]};
+export type ImportedWord={files:Record<string,Uint8Array>;text:string;locations:string[];notes?:{id:string;kind:string;text:string}[]};
 function documentParagraphs(body:Element){
  const paragraphs:Element[]=[],locations:string[]=[];let tableCount=0;
  function walk(container:Element,location:string,depth=0){
@@ -73,11 +73,22 @@ export async function importWord(bytes:Uint8Array):Promise<ImportedWord>{
   // Reject existing revisions also inside paragraph/run formatting.
   if(Array.from(p.getElementsByTagNameNS(W,'*')).some(e=>['ins','del','moveFrom','moveTo','pPrChange','rPrChange'].includes(e.localName)))invalid();
   return children(p).filter(e=>allowed(e,['r'])).map(r=>{
-   if(children(r).some(e=>!allowed(e,['rPr','t','tab'])))throw Error('O documento contém imagens, campos ou quebras internas não suportados.');
+   if(children(r).some(e=>!allowed(e,['rPr','t','tab','footnoteReference','endnoteReference'])))throw Error('O documento contém imagens, campos ou quebras internas não suportados.');
    return children(r).map(e=>e.localName==='t'?e.textContent||'':e.localName==='tab'?'\t':'').join('');
   }).join('');
  });
- const text=lines.join('\n');if(!text.trim()||text.length>60000)throw Error('O texto deve ter entre 1 e 60 000 caracteres.');return {files,text,locations};
+ const notes:{id:string;kind:string;text:string}[]=[];
+ for(const [part,tag,label] of [['word/footnotes.xml','footnote','Nota de rodapé'],['word/endnotes.xml','endnote','Nota final']]){
+  if(!files[part])continue;const n=parse(files[part]);
+  for(const note of Array.from(n.getElementsByTagNameNS(W,tag))){const id=note.getAttributeNS(W,'id')||'';if(!/^\d+$/.test(id)||Number(id)<=0)continue;const text=Array.from(note.getElementsByTagNameNS(W,'p')).map(p=>Array.from(p.getElementsByTagNameNS(W,'t')).map(t=>t.textContent||'').join('')).join('\n');notes.push({id,kind:label,text});}
+ }
+ if(notes.length>500||notes.reduce((n,r)=>n+r.text.length,0)>60000)throw Error('Notas demasiado extensas.');
+ for(const [tag,label] of [['footnoteReference','Nota de rodapé'],['endnoteReference','Nota final']]){
+  const known=notes.filter(n=>n.kind===label).map(n=>n.id);
+  if(new Set(known).size!==known.length)throw Error('O documento contém notas com identificadores repetidos. Reveja-o no Word.');
+  for(const anchor of Array.from(body.getElementsByTagNameNS(W,tag)))if(!known.includes(anchor.getAttributeNS(W,'id')||''))throw Error('Existe uma referência a uma nota em falta. Reveja o documento original no Word.');
+ }
+ const text=lines.join('\n');if(!text.trim()||text.length>60000)throw Error('O texto deve ter entre 1 e 60 000 caracteres.');return {files,text,locations,notes};
 }
 export function reviseImportedWord(source:ImportedWord,proposed:string,author:string):Uint8Array{
  if(!author.trim()||author.length>120||!proposed.trim()||proposed.length>60000||/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(proposed))throw Error('Verifique o texto e o nome do revisor.');
@@ -85,7 +96,7 @@ export function reviseImportedWord(source:ImportedWord,proposed:string,author:st
  const before=source.text.split('\n'),after=proposed.replace(/\r\n?/g,'\n').split('\n');
  if(after.length!==before.length)throw Error('Para preservar a formatação, mantenha o número de parágrafos. Pode mudar para exportação de texto simples para inserir ou eliminar parágrafos.');
  let id=0;const stamp=new Date().toISOString();
- paragraphs.forEach((p,i)=>{if(before[i]===after[i])return;const runs=children(p).filter(e=>allowed(e,['r']));const formatting=runs[0]?.getElementsByTagNameNS(W,'rPr')[0]?.cloneNode(true);
+ paragraphs.forEach((p,i)=>{if(before[i]===after[i])return;if(p.getElementsByTagNameNS(W,'footnoteReference').length||p.getElementsByTagNameNS(W,'endnoteReference').length)throw Error('Este parágrafo contém uma âncora de nota. Reveja-o no Word para conservar a posição exacta da referência. Os outros parágrafos podem ser alterados aqui.');const runs=children(p).filter(e=>allowed(e,['r']));const formatting=runs[0]?.getElementsByTagNameNS(W,'rPr')[0]?.cloneNode(true);
   function revision(kind:string){const e=doc.createElementNS(W,'w:'+kind);e.setAttributeNS(W,'w:id',String(id++));e.setAttributeNS(W,'w:author',author.trim());e.setAttributeNS(W,'w:date',stamp);return e;}
   const deleted=revision('del');for(const run of runs){for(const t of Array.from(run.getElementsByTagNameNS(W,'t'))){const d=doc.createElementNS(W,'w:delText');d.setAttributeNS('http://www.w3.org/XML/1998/namespace','xml:space','preserve');d.textContent=t.textContent;t.replaceWith(d);}deleted.appendChild(run);}p.appendChild(deleted);
   const inserted=revision('ins'),r=doc.createElementNS(W,'w:r');if(formatting)r.appendChild(formatting);after[i].split('\t').forEach((part,n)=>{if(n)r.appendChild(doc.createElementNS(W,'w:tab'));const t=doc.createElementNS(W,'w:t');t.setAttributeNS('http://www.w3.org/XML/1998/namespace','xml:space','preserve');t.textContent=part;r.appendChild(t);});inserted.appendChild(r);p.appendChild(inserted);

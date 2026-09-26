@@ -4,6 +4,21 @@ MVP Next.js + TypeScript, Supabase Auth/DB/Storage e OpenAI no backend. Interfac
 
 ## Estado real e limites
 
+### Estado actual da camada técnica 020
+
+O guia actual para dossiers estruturados, fontes com datas, excertos verificados,
+pesquisa persistente por notificações, OCR local, regras de revisão Word e avaliação
+de modelos é [TECHNICAL_WORKSPACE.md](TECHNICAL_WORKSPACE.md).
+Instalação e diagnóstico: `/setup/workspace`, reservado ao titular. Esta versão
+não activa pagamentos, não aumenta orçamentos e não reactiva Claude/Gemini.
+
+As secções seguintes descrevem também versões históricas. Em particular, a
+pesquisa do chat dispõe agora de trabalho persistente e recuperação; a continuação
+sem navegador requer configurar e verificar o webhook. A revisão Word e o leitor
+PDF/OCR são locais. A análise contratual e os restantes serviços síncronos não foram
+convertidos para a mesma execução em segundo plano. Consulte o guia actual antes
+de usar uma instrução de uma migração antiga; não repita toda a instalação.
+
 ### Motor avançado — activação explícita
 
 - Chat e ferramentas documentais usam `LEGAL_AI_MODEL` (por defeito `gpt-6-astra`), raciocínio elevado, uma passagem de elaboração e uma segunda de revisão. Não há fallback automático para um modelo mais barato. O acesso ao modelo na conta API ainda precisa de ser confirmado por um teste real autorizado.
@@ -56,14 +71,14 @@ Testes adicionais sem serviços externos: `node tests/sql-assistant.mjs` (usa a 
 
 ## Executar no Mac
 
-Recomendado Node.js 22.18+ (necessário para os testes). Na pasta do projecto:
+Recomendado Node.js 24 e pnpm 11.19.0 (fixado em package.json). Na pasta do projecto:
 
 ```bash
-npm install
-npm run dev
+pnpm install --frozen-lockfile --ignore-scripts
+pnpm dev
 ```
 
-Abra http://localhost:3000. Mantenha esse Terminal aberto. Para reiniciar, Control+C e depois npm run dev.
+Abra http://localhost:3000. Mantenha esse Terminal aberto. Para reiniciar, Control+C e depois pnpm dev. Os recursos PDF/OCR são preparados explicitamente em dev/build, sem CDN.
 
 Se ainda não existir .env.local, crie-o a partir de .env.example. **Não substitua um .env.local já preenchido.** Abra-o num editor de texto, não na vista de comentários de alterações.
 

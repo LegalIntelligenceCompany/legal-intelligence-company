@@ -17,8 +17,8 @@ export function ResearchPanel(){
  const [funding,setFunding]=useState<Funding|null>(null),[walletId,setWalletId]=useState('');
  const selectedWallet=funding?.wallets?.find(w=>w.id===walletId);
  const external=model.startsWith('review-'),selectedModel=otherModels.find(m=>m.id===model);
- const ceiling=external?selectedModel?.ceiling:funding?.ceilings?.[model==='gpt-5-mini'?'economical':'advanced'];
- const creditsBlocked=(external&&!selectedModel?.available)||(funding?.mode==='commercial'&&(!selectedWallet||!selectedWallet.active||selectedWallet.frozen||ceiling===undefined||selectedWallet.availableCents<ceiling));
+ const ceiling=(external||model==='auto')?selectedModel?.ceiling:funding?.ceilings?.[model==='gpt-5-mini'?'economical':'advanced'];
+ const creditsBlocked=((external||model==='auto')&&!selectedModel?.available)||(funding?.mode==='commercial'&&(!selectedWallet||!selectedWallet.active||selectedWallet.frozen||ceiling===undefined||selectedWallet.availableCents<ceiling));
  const [ready,setReady]=useState(false),[loading,setLoading]=useState(true),[question,setQuestion]=useState(''),[profile,setProfile]=useState('Geral'),[country,setCountry]=useState('Portugal'),[consent,setConsent]=useState(false),[job,setJob]=useState<Job|null>(null),[error,setError]=useState(''),[sending,setSending]=useState(false),[polling,setPolling]=useState(true);
  const [recent,setRecent]=useState<RecentJob[]>([]),[historyError,setHistoryError]=useState(''),[historyQuery,setHistoryQuery]=useState(''),[continuing,setContinuing]=useState(false),[recovering,setRecovering]=useState(false),[elapsed,setElapsed]=useState(0),[uncertain,setUncertain]=useState(false);
  const requestId=useRef<string|null>(null),recoveryVersion=useRef(0);
